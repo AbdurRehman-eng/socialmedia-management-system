@@ -37,8 +37,10 @@ export default function OrdersTable({ orders }: { orders: Order[] }) {
                     className={`px-3 py-1 rounded-full text-xs font-semibold inline-block ${
                       order.status === "Completed"
                         ? "bg-green-200 text-slate-900"
-                        : order.status === "In Progress"
+                        : order.status === "In progress" || order.status === "Partial" || order.status === "In Progress"
                           ? "bg-green-100 text-green-700"
+                          : order.status?.includes("error") || order.status?.includes("Error")
+                          ? "bg-red-100 text-red-700"
                           : "bg-gray-100 text-gray-700"
                     }`}
                   >
@@ -70,8 +72,10 @@ export default function OrdersTable({ orders }: { orders: Order[] }) {
                 className={`px-2 py-1 rounded-full text-xs font-semibold ${
                   order.status === "Completed"
                     ? "bg-green-200 text-slate-900"
-                    : order.status === "In Progress"
+                    : order.status === "In progress" || order.status === "Partial" || order.status === "In Progress"
                       ? "bg-green-100 text-green-700"
+                      : order.status?.includes("error") || order.status?.includes("Error")
+                      ? "bg-red-100 text-red-700"
                       : "bg-gray-100 text-gray-700"
                 }`}
               >

@@ -14,6 +14,7 @@ import {
   Settings,
   Menu,
   X,
+  Shield,
 } from "lucide-react"
 
 export default function Sidebar() {
@@ -29,6 +30,7 @@ export default function Sidebar() {
     { id: "reports", label: "Reports", icon: BarChart3, href: "/reports" },
     { id: "support", label: "Support", icon: HelpCircle, href: "/support" },
     { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
+    { id: "admin", label: "Admin Panel", icon: Shield, href: "/admin" },
   ]
 
   const isActive = (href: string) => pathname === href

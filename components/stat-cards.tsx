@@ -1,11 +1,30 @@
-import { ShoppingCart, Zap, CheckCircle, Wallet } from "lucide-react"
+"use client"
 
-export default function StatCards() {
+import { ShoppingCart, Zap, CheckCircle, Wallet, Loader2 } from "lucide-react"
+import { formatCoins } from "@/lib/coins"
+import { useCoinBalance } from "@/hooks/use-coin-balance"
+
+interface StatCardsProps {
+  orders?: Array<{
+    status: string
+  }>
+}
+
+export default function StatCards({ orders = [] }: StatCardsProps) {
+  const { balance: coinBalance, loading: balanceLoading } = useCoinBalance()
+
+  const totalOrders = orders.length
+  const activeOrders = orders.filter((o) => 
+    o.status && !["Completed", "Cancelled", "Error"].includes(o.status)
+  ).length
+  const completedOrders = orders.filter((o) => o.status === "Completed").length
+  const displayBalance = balanceLoading ? "Loading..." : formatCoins(coinBalance)
+
   const stats = [
-    { label: "Total Orders", value: "1,248", icon: ShoppingCart },
-    { label: "Active Orders", value: "32", icon: Zap },
-    { label: "Completed", value: "1,180", icon: CheckCircle },
-    { label: "Credit Balance", value: "P.890", icon: Wallet },
+    { label: "Total Orders", value: totalOrders.toString(), icon: ShoppingCart },
+    { label: "Active Orders", value: activeOrders.toString(), icon: Zap },
+    { label: "Completed", value: completedOrders.toString(), icon: CheckCircle },
+    { label: "Coin Balance", value: displayBalance, icon: Wallet },
   ]
 
   return (
@@ -22,7 +41,13 @@ export default function StatCards() {
             </div>
             <div className="min-w-0">
               <p className="text-slate-900 text-xs sm:text-sm font-medium">{stat.label}</p>
-              <p className="text-slate-900 text-lg sm:text-2xl font-bold truncate">{stat.value}</p>
+              <p className="text-slate-900 text-lg sm:text-2xl font-bold truncate">
+                {stat.value === "Loading..." ? (
+                  <Loader2 className="w-5 h-5 animate-spin inline" />
+                ) : (
+                  stat.value
+                )}
+              </p>
             </div>
           </div>
         )
