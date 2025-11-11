@@ -1,5 +1,5 @@
-const API_URL = "https://viieagency.com/api/v2"
-const API_KEY = "610aa8dc01d8e335e4651157209de139"
+// Client-side API client calls our Next.js server route to avoid exposing the provider API key
+const API_URL = "/api/smm"
 
 export interface Service {
   service: number
@@ -52,20 +52,11 @@ export interface CancelResponse {
 
 class SMMApiClient {
   private async makeRequest(params: Record<string, string | number>): Promise<any> {
-    const formData = new URLSearchParams()
-    formData.append("key", API_KEY)
-    
-    Object.entries(params).forEach(([key, value]) => {
-      formData.append(key, String(value))
-    })
-
     try {
       const response = await fetch(API_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: formData,
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify(params),
       })
 
       if (!response.ok) {

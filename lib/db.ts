@@ -4,6 +4,13 @@ import { supabase, type CoinBalance, type PricingRule, type Order, type Setting 
 // Default user ID for single-user mode (before implementing auth)
 const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000000'
 
+function debugLog(...args: unknown[]) {
+  if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV !== 'production') {
+    // eslint-disable-next-line no-console
+    console.warn('[DB]', ...args)
+  }
+}
+
 /**
  * Get or create default user
  */
@@ -26,7 +33,7 @@ export async function getCoinBalance(userId?: string): Promise<number> {
 
   if (error) {
     // If no balance exists, create one with default
-    if (error.code === 'PGRST116') {
+    if (error.code === 'PGRST116' || error.code === 'PGRST204') {
       const { data: newBalance } = await supabase
         .from('coin_balances')
         .insert({ user_id: uid, coins: 1000.00 })
@@ -34,7 +41,7 @@ export async function getCoinBalance(userId?: string): Promise<number> {
         .single()
       return newBalance?.coins || 1000.00
     }
-    console.error('Error fetching coin balance:', error)
+    debugLog('Error fetching coin balance:', error)
     return 1000.00 // Default fallback
   }
 
@@ -49,7 +56,7 @@ export async function setCoinBalance(coins: number, userId?: string): Promise<vo
     .upsert({ user_id: uid, coins }, { onConflict: 'user_id' })
 
   if (error) {
-    console.error('Error setting coin balance:', error)
+    debugLog('Error setting coin balance:', error)
     throw error
   }
 }
@@ -94,7 +101,7 @@ export async function setSetting(key: string, value: string): Promise<void> {
     .upsert({ key, value }, { onConflict: 'key' })
 
   if (error) {
-    console.error('Error setting setting:', error)
+    debugLog('Error setting setting:', error)
     throw error
   }
 }
@@ -125,7 +132,7 @@ export async function getPricingRules(): Promise<Record<number, PricingRule>> {
     .select('*')
 
   if (error) {
-    console.error('Error fetching pricing rules:', error)
+    debugLog('Error fetching pricing rules:', error)
     return {}
   }
 
@@ -169,7 +176,7 @@ export async function setPricingRule(serviceId: number, rule: { markup?: number;
     }, { onConflict: 'service_id' })
 
   if (error) {
-    console.error('Error setting pricing rule:', error)
+    debugLog('Error setting pricing rule:', error)
     throw error
   }
 }
@@ -181,7 +188,7 @@ export async function deletePricingRule(serviceId: number): Promise<void> {
     .eq('service_id', serviceId)
 
   if (error) {
-    console.error('Error deleting pricing rule:', error)
+    debugLog('Error deleting pricing rule:', error)
     throw error
   }
 }
@@ -198,7 +205,7 @@ export async function getOrders(userId?: string): Promise<Order[]> {
     .order('created_at', { ascending: false })
 
   if (error) {
-    console.error('Error fetching orders:', error)
+    debugLog('Error fetching orders:', error)
     return []
   }
 
@@ -236,7 +243,7 @@ export async function createOrder(orderData: {
     .single()
 
   if (error) {
-    console.error('Error creating order:', error)
+    debugLog('Error creating order:', error)
     throw error
   }
 
@@ -269,7 +276,7 @@ export async function updateOrderStatus(
     .eq('user_id', uid)
 
   if (error) {
-    console.error('Error updating order status:', error)
+    debugLog('Error updating order status:', error)
     throw error
   }
 }

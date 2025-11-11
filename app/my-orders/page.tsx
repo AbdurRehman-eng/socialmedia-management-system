@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import PageLayout from "@/components/page-layout"
 import OrdersTable from "@/components/orders-table"
 import { smmApi } from "@/lib/api"
-import { Loader2, RefreshCw, Plus } from "lucide-react"
+import { Loader2, RefreshCw, Plus, Search, RotateCcw, Ban } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,6 +17,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import * as db from "@/lib/db"
+import type { OrderStatus } from "@/lib/api"
 
 interface Order {
   id: string
@@ -31,7 +33,26 @@ interface Order {
   currency?: string
 }
 
-const STORAGE_KEY = "smm_order_ids"
+function mapDbOrder(order: any): Order {
+  return {
+    id: `#${order.order_id}`,
+    orderId: order.order_id,
+    service: order.service_name || "Unknown",
+    quantity: order.quantity || 0,
+    status: order.status || "Pending",
+    date: order.created_at
+      ? new Date(order.created_at).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "N/A",
+    charge: order.charge || undefined,
+    start_count: order.start_count || undefined,
+    remains: order.remains || undefined,
+    currency: order.currency || undefined,
+  }
+}
 
 export default function MyOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([])
@@ -39,82 +60,78 @@ export default function MyOrdersPage() {
   const [refreshing, setRefreshing] = useState(false)
   const [newOrderId, setNewOrderId] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [statusInput, setStatusInput] = useState("")
+  const [statusResult, setStatusResult] = useState<OrderStatus | null>(null)
+  const [statusLoading, setStatusLoading] = useState(false)
+  const [addLoading, setAddLoading] = useState(false)
+  const [refillInput, setRefillInput] = useState("")
+  const [refillLoading, setRefillLoading] = useState(false)
+  const [cancelInput, setCancelInput] = useState("")
+  const [cancelLoading, setCancelLoading] = useState(false)
 
-  const getStoredOrderIds = (): number[] => {
-    if (typeof window === "undefined") return []
-    const stored = localStorage.getItem(STORAGE_KEY)
-    return stored ? JSON.parse(stored) : []
-  }
-
-  const saveOrderId = (orderId: number) => {
-    if (typeof window === "undefined") return
-    const existing = getStoredOrderIds()
-    if (!existing.includes(orderId)) {
-      const updated = [...existing, orderId]
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+  const loadOrders = async (refreshStatus = true) => {
+    try {
+      setLoading(true)
+      const dbOrders = await db.getOrders()
+      const mapped = dbOrders.map(mapDbOrder)
+      setOrders(mapped)
+      if (refreshStatus && dbOrders.length > 0) {
+        await refreshOrderStatuses(dbOrders.map((order) => order.order_id))
+      }
+    } catch (err) {
+      console.error("Failed to load orders:", err)
+      toast.error("Failed to load orders")
+    } finally {
+      setLoading(false)
     }
   }
 
-  const fetchOrderStatuses = async (isRefresh = false) => {
+  const refreshOrderStatuses = async (orderIds?: number[]) => {
     try {
-      if (isRefresh) {
-        setRefreshing(true)
-      } else {
-        setLoading(true)
-      }
-
-      const orderIds = getStoredOrderIds()
-      
-      if (orderIds.length === 0) {
+      setRefreshing(true)
+      const ids = orderIds && orderIds.length > 0 ? orderIds : await db.getOrderIds()
+      if (ids.length === 0) {
         setOrders([])
         return
       }
 
-      // Fetch statuses for all orders (API supports up to 100 at once)
-      const statuses = await smmApi.getMultipleOrderStatus(orderIds)
+      const statuses = await smmApi.getMultipleOrderStatus(ids)
+      const updatedOrders = [...orders]
 
-      const orderList: Order[] = []
-      
-      for (const [orderIdStr, status] of Object.entries(statuses)) {
-        const orderId = Number(orderIdStr)
-        if (status.error) {
-          // Order not found or error
-          orderList.push({
-            id: `#${orderId}`,
-            orderId: orderId,
-            service: "Unknown",
-            quantity: 0,
-            status: status.error,
-            date: "N/A",
-          })
-        } else {
-          orderList.push({
-            id: `#${orderId}`,
-            orderId: orderId,
-            service: "Service", // We don't have service name in status response
-            quantity: status.remains ? Number(status.remains) : 0,
-            status: status.status || "Unknown",
-            date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-            charge: status.charge,
-            start_count: status.start_count,
-            remains: status.remains,
-            currency: status.currency,
-          })
-        }
-      }
+      await Promise.all(
+        Object.entries(statuses).map(async ([orderIdStr, status]) => {
+          const orderId = Number(orderIdStr)
+          if (status.error) {
+            toast.error(`Order ${orderId}: ${status.error}`)
+            return
+          }
+          await db.updateOrderStatus(orderId, status)
+          const index = updatedOrders.findIndex((o) => o.orderId === orderId)
+          if (index !== -1) {
+            updatedOrders[index] = {
+              ...updatedOrders[index],
+              status: status.status || updatedOrders[index].status,
+              charge: status.charge,
+              start_count: status.start_count,
+              remains: status.remains,
+              currency: status.currency,
+            }
+          }
+        })
+      )
 
-      setOrders(orderList)
+      setOrders(updatedOrders)
+      toast.success("Order statuses refreshed")
     } catch (err) {
-      console.error("Failed to fetch order statuses:", err)
-      toast.error("Failed to load orders")
+      console.error("Failed to refresh order statuses:", err)
+      toast.error("Failed to refresh order statuses")
     } finally {
-      setLoading(false)
       setRefreshing(false)
     }
   }
 
   useEffect(() => {
-    fetchOrderStatuses()
+    loadOrders(true)
   }, [])
 
   const handleAddOrder = async () => {
@@ -125,32 +142,145 @@ export default function MyOrdersPage() {
     }
 
     try {
-      // Save the order ID
-      saveOrderId(orderId)
+      setAddLoading(true)
+      const status = await smmApi.getOrderStatus(orderId)
+      if (status.error) {
+        toast.error(status.error)
+        setAddLoading(false)
+        return
+      }
+
+      await db.createOrder({
+        orderId,
+        serviceId: 0,
+        serviceName: "Manual Entry",
+        link: "N/A",
+        quantity: status.remains ? Number(status.remains) : 0,
+        costCoins: status.charge ? Number(status.charge) : 0,
+      })
+
+      await db.updateOrderStatus(orderId, status)
       setNewOrderId("")
       setDialogOpen(false)
-      toast.success("Order added. Refreshing...")
-      await fetchOrderStatuses(true)
+      toast.success("Order added successfully")
+      await loadOrders(false)
     } catch (err) {
+      console.error("Failed to add order:", err)
       toast.error("Failed to add order")
+    } finally {
+      setAddLoading(false)
+    }
+  }
+
+  const handleCheckStatus = async () => {
+    const orderId = Number(statusInput.trim())
+    if (!orderId || isNaN(orderId)) {
+      toast.error("Please enter a valid order ID")
+      return
+    }
+
+    try {
+      setStatusLoading(true)
+      const status = await smmApi.getOrderStatus(orderId)
+      if (status.error) {
+        toast.error(status.error)
+        setStatusResult(null)
+      } else {
+        setStatusResult(status)
+        toast.success(`Status: ${status.status || "Unknown"}`)
+        await db.updateOrderStatus(orderId, status)
+        await loadOrders(false)
+      }
+    } catch (err) {
+      console.error("Failed to fetch order status:", err)
+      toast.error("Failed to fetch order status")
+    } finally {
+      setStatusLoading(false)
+    }
+  }
+
+  const handleCreateRefill = async () => {
+    const orderId = Number(refillInput.trim())
+    if (!orderId || isNaN(orderId)) {
+      toast.error("Please enter a valid order ID")
+      return
+    }
+
+    try {
+      setRefillLoading(true)
+      const response = await smmApi.createRefill(orderId)
+      if ("refill" in response) {
+        toast.success(`Refill created. Refill ID: ${response.refill}`)
+      } else {
+        toast.error("Failed to create refill")
+      }
+    } catch (err) {
+      console.error("Failed to create refill:", err)
+      toast.error("Failed to create refill")
+    } finally {
+      setRefillLoading(false)
+    }
+  }
+
+  const handleCancelOrder = async () => {
+    if (!cancelInput.trim()) {
+      toast.error("Enter one or more order IDs (comma separated)")
+      return
+    }
+
+    const orderIds = cancelInput
+      .split(",")
+      .map((id) => Number(id.trim()))
+      .filter((id) => !isNaN(id) && id > 0)
+
+    if (orderIds.length === 0) {
+      toast.error("Please enter valid order IDs")
+      return
+    }
+
+    try {
+      setCancelLoading(true)
+      const response = await smmApi.cancelOrders(orderIds)
+      response.forEach((res) => {
+        if (typeof res.cancel === "object" && "error" in res.cancel) {
+          toast.error(`Order ${res.order}: ${res.cancel.error}`)
+        } else {
+          toast.success(`Order ${res.order} cancel requested`)
+        }
+      })
+      await loadOrders(false)
+    } catch (err) {
+      console.error("Failed to cancel orders:", err)
+      toast.error("Failed to cancel orders")
+    } finally {
+      setCancelLoading(false)
     }
   }
 
   return (
     <PageLayout title="My Orders">
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => fetchOrderStatuses(true)}
-              disabled={refreshing}
-              variant="outline"
-              size="sm"
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-          </div>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => refreshOrderStatuses()}
+                disabled={refreshing}
+                variant="outline"
+                size="sm"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
+                Refresh Statuses
+              </Button>
+              <Button
+                onClick={() => loadOrders(false)}
+                variant="outline"
+                size="sm"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Reload Orders
+              </Button>
+            </div>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button>
@@ -182,10 +312,69 @@ export default function MyOrdersPage() {
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleAddOrder}>Add</Button>
+                <Button onClick={handleAddOrder} disabled={addLoading}>
+                  {addLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add"}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
+        </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white border border-green-100 rounded-2xl p-4 shadow-sm space-y-3">
+              <div className="flex items-center gap-2">
+                <Search className="w-4 h-4 text-green-600" />
+                <h3 className="font-semibold text-slate-900 text-sm">Check Order Status</h3>
+              </div>
+              <Input
+                type="number"
+                placeholder="Order ID"
+                value={statusInput}
+                onChange={(e) => setStatusInput(e.target.value)}
+              />
+              <Button onClick={handleCheckStatus} disabled={statusLoading}>
+                {statusLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Check Status"}
+              </Button>
+              {statusResult && (
+                <div className="text-xs text-gray-600 space-y-1 border-t border-gray-100 pt-2">
+                  <p>Status: <span className="font-semibold text-slate-900">{statusResult.status || "Unknown"}</span></p>
+                  {statusResult.charge && <p>Charge: {statusResult.charge} {statusResult.currency || ""}</p>}
+                  {statusResult.remains && <p>Remains: {statusResult.remains}</p>}
+                </div>
+              )}
+            </div>
+
+            <div className="bg-white border border-green-100 rounded-2xl p-4 shadow-sm space-y-3">
+              <div className="flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 text-green-600" />
+                <h3 className="font-semibold text-slate-900 text-sm">Create Refill</h3>
+              </div>
+              <Input
+                type="number"
+                placeholder="Order ID"
+                value={refillInput}
+                onChange={(e) => setRefillInput(e.target.value)}
+              />
+              <Button onClick={handleCreateRefill} disabled={refillLoading}>
+                {refillLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Request Refill"}
+              </Button>
+            </div>
+
+            <div className="bg-white border border-green-100 rounded-2xl p-4 shadow-sm space-y-3">
+              <div className="flex items-center gap-2">
+                <Ban className="w-4 h-4 text-red-600" />
+                <h3 className="font-semibold text-slate-900 text-sm">Cancel Orders</h3>
+              </div>
+              <Input
+                placeholder="Order IDs (comma separated)"
+                value={cancelInput}
+                onChange={(e) => setCancelInput(e.target.value)}
+              />
+              <Button onClick={handleCancelOrder} disabled={cancelLoading} variant="destructive">
+                {cancelLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cancel Orders"}
+              </Button>
+            </div>
+          </div>
         </div>
 
         {loading ? (
