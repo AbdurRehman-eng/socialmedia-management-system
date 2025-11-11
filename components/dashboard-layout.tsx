@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense } from "react"
 import Sidebar from "./sidebar"
 import TopBar from "./top-bar"
 import StatCards from "./stat-cards"
@@ -111,7 +111,9 @@ export default function DashboardLayout() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
               {/* Create Order Form */}
               <div className="lg:col-span-2">
-                <CreateOrderForm onOrderSubmit={handleOrderSubmit} />
+                <Suspense fallback={<div className="bg-white rounded-2xl p-4 sm:p-6 border border-green-100">Loading form...</div>}>
+                  <CreateOrderForm onOrderSubmit={handleOrderSubmit} />
+                </Suspense>
               </div>
 
               {/* Recent Orders Preview */}

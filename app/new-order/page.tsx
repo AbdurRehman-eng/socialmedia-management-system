@@ -1,4 +1,5 @@
 "use client"
+import { Suspense } from "react"
 import { useRouter } from "next/navigation"
 import PageLayout from "@/components/page-layout"
 import CreateOrderForm from "@/components/create-order-form"
@@ -17,7 +18,9 @@ export default function NewOrderPage() {
   return (
     <PageLayout title="Create New Order">
       <div className="max-w-2xl">
-        <CreateOrderForm onOrderSubmit={handleOrderSubmit} />
+        <Suspense fallback={<div className="bg-white rounded-2xl p-6 border border-green-100">Loading form...</div>}>
+          <CreateOrderForm onOrderSubmit={handleOrderSubmit} />
+        </Suspense>
       </div>
     </PageLayout>
   )
