@@ -6,8 +6,8 @@ import TopBar from "./top-bar"
 import StatCards from "./stat-cards"
 import CreateOrderForm from "./create-order-form"
 import OrdersTable from "./orders-table"
-import { smmApi } from "@/lib/api"
 import { Loader2 } from "lucide-react"
+import * as db from "@/lib/db"
 
 interface Order {
   id: string
@@ -22,73 +22,51 @@ interface Order {
   currency?: string
 }
 
-const STORAGE_KEY = "smm_order_ids"
+function mapDbOrder(order: any): Order {
+  return {
+    id: `#${order.order_id}`,
+    orderId: order.order_id,
+    service: order.service_name || "Unknown",
+    quantity: order.quantity || 0,
+    status: order.status || "Pending",
+    date: order.created_at
+      ? new Date(order.created_at).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "N/A",
+    charge: order.charge || undefined,
+    start_count: order.start_count || undefined,
+    remains: order.remains || undefined,
+    currency: order.currency || undefined,
+  }
+}
 
 export default function DashboardLayout() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
 
-  const getStoredOrderIds = (): number[] => {
-    if (typeof window === "undefined") return []
-    const stored = localStorage.getItem(STORAGE_KEY)
-    return stored ? JSON.parse(stored) : []
-  }
-
-  const fetchOrderStatuses = async () => {
+  const loadOrders = async () => {
     try {
       setLoading(true)
-      const orderIds = getStoredOrderIds()
-      
-      if (orderIds.length === 0) {
-        setOrders([])
-        return
-      }
-
-      const statuses = await smmApi.getMultipleOrderStatus(orderIds)
-      const orderList: Order[] = []
-      
-      for (const [orderIdStr, status] of Object.entries(statuses)) {
-        const orderId = Number(orderIdStr)
-        if (status.error) {
-          orderList.push({
-            id: `#${orderId}`,
-            orderId: orderId,
-            service: "Unknown",
-            quantity: 0,
-            status: status.error,
-            date: "N/A",
-          })
-        } else {
-          orderList.push({
-            id: `#${orderId}`,
-            orderId: orderId,
-            service: "Service",
-            quantity: status.remains ? Number(status.remains) : 0,
-            status: status.status || "Unknown",
-            date: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
-            charge: status.charge,
-            start_count: status.start_count,
-            remains: status.remains,
-            currency: status.currency,
-          })
-        }
-      }
-
-      setOrders(orderList)
+      const dbOrders = await db.getOrders()
+      const mapped = dbOrders.map(mapDbOrder)
+      setOrders(mapped)
     } catch (err) {
-      console.error("Failed to fetch order statuses:", err)
+      console.error("Failed to load orders:", err)
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    fetchOrderStatuses()
+    loadOrders()
   }, [])
 
   const handleOrderSubmit = (order: any) => {
     // Refresh orders after new order is created
-    fetchOrderStatuses()
+    loadOrders()
   }
 
   return (

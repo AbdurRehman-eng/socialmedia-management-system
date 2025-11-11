@@ -29,18 +29,35 @@ export async function getCoinBalance(userId?: string): Promise<number> {
     .from('coin_balances')
     .select('coins')
     .eq('user_id', uid)
-    .single()
+    .maybeSingle()
 
-  if (error) {
-    // If no balance exists, create one with default
-    if (error.code === 'PGRST116' || error.code === 'PGRST204') {
-      const { data: newBalance } = await supabase
+  // If no balance exists (null data or PGRST116 error), create one with default
+  if (!data || error?.code === 'PGRST116') {
+    try {
+      const { data: newBalance, error: insertError } = await supabase
         .from('coin_balances')
         .insert({ user_id: uid, coins: 1000.00 })
         .select('coins')
         .single()
-      return newBalance?.coins || 1000.00
+      
+      if (insertError) {
+        // If insert fails (maybe due to constraint), try to fetch again
+        const { data: retryData } = await supabase
+          .from('coin_balances')
+          .select('coins')
+          .eq('user_id', uid)
+          .maybeSingle()
+        return Number(retryData?.coins) || 1000.00
+      }
+      
+      return Number(newBalance?.coins) || 1000.00
+    } catch (err) {
+      debugLog('Error creating coin balance:', err)
+      return 1000.00 // Default fallback
     }
+  }
+
+  if (error) {
     debugLog('Error fetching coin balance:', error)
     return 1000.00 // Default fallback
   }
@@ -84,15 +101,38 @@ export async function getSetting(key: string, defaultValue: string): Promise<str
     .from('settings')
     .select('value')
     .eq('key', key)
-    .single()
+    .maybeSingle()
 
-  if (error || !data) {
-    // Create default setting if it doesn't exist
-    await supabase.from('settings').insert({ key, value: defaultValue })
+  // If no setting exists, create one with default value
+  if (!data || error?.code === 'PGRST116') {
+    try {
+      const { error: insertError } = await supabase
+        .from('settings')
+        .insert({ key, value: defaultValue })
+      
+      if (insertError) {
+        // If insert fails (maybe due to race condition), try to fetch again
+        const { data: retryData } = await supabase
+          .from('settings')
+          .select('value')
+          .eq('key', key)
+          .maybeSingle()
+        return retryData?.value || defaultValue
+      }
+      
+      return defaultValue
+    } catch (err) {
+      debugLog('Error creating setting:', err)
+      return defaultValue
+    }
+  }
+
+  if (error) {
+    debugLog('Error fetching setting:', error)
     return defaultValue
   }
 
-  return data.value
+  return data.value || defaultValue
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
@@ -153,9 +193,14 @@ export async function getPricingRule(serviceId: number): Promise<{ serviceId: nu
     .from('pricing_rules')
     .select('*')
     .eq('service_id', serviceId)
-    .single()
+    .maybeSingle()
 
-  if (error || !data) {
+  if (error && error.code !== 'PGRST116') {
+    debugLog('Error fetching pricing rule:', error)
+    return null
+  }
+
+  if (!data) {
     return null
   }
 
@@ -198,11 +243,35 @@ export async function deletePricingRule(serviceId: number): Promise<void> {
 export async function getOrders(userId?: string): Promise<Order[]> {
   const uid = userId || await getDefaultUserId()
   
-  const { data, error } = await supabase
+  // First, try to get orders with matching user_id
+  let { data, error } = await supabase
     .from('orders')
     .select('*')
     .eq('user_id', uid)
     .order('created_at', { ascending: false })
+
+  // If no orders found or error, also check for orders with NULL user_id (backward compatibility)
+  if ((!data || data.length === 0 || error) && !userId) {
+    const { data: nullUserData, error: nullUserError } = await supabase
+      .from('orders')
+      .select('*')
+      .is('user_id', null)
+      .order('created_at', { ascending: false })
+    
+    if (nullUserData && nullUserData.length > 0) {
+      // Update these orders to have the default user_id
+      const orderIds = nullUserData.map(o => o.id)
+      await supabase
+        .from('orders')
+        .update({ user_id: uid })
+        .in('id', orderIds)
+      
+      data = nullUserData
+      error = null
+    } else if (nullUserError) {
+      debugLog('Error fetching orders with null user_id:', nullUserError)
+    }
+  }
 
   if (error) {
     debugLog('Error fetching orders:', error)

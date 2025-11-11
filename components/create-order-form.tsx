@@ -162,7 +162,7 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
       
       toast.success(`Order created successfully! Order ID: ${response.order}. ${formatCoins(cost)} deducted.`)
       
-      if (onOrderSubmit) {
+      if (onOrderSubmit && selectedService) {
         onOrderSubmit({
           id: `#${response.order}`,
           service: selectedService.name,
