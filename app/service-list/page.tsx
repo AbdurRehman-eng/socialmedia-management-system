@@ -145,7 +145,7 @@ export default function ServiceListPage() {
                       )}
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
-                      Provider: ${service.rate}/unit
+                      Provider: ₱{service.rate}/unit
                     </p>
                   </div>
 

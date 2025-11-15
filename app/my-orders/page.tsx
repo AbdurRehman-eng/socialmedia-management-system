@@ -17,7 +17,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import * as db from "@/lib/db"
 import type { OrderStatus } from "@/lib/api"
 
 interface Order {
@@ -27,6 +26,7 @@ interface Order {
   quantity: number
   status: string
   date: string
+  link: string
   charge?: string
   start_count?: string
   remains?: string
@@ -34,22 +34,22 @@ interface Order {
 }
 
 function mapDbOrder(order: any): Order {
+  const date = order.created_at ? new Date(order.created_at) : null
+  const formattedDate = date
+    ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}\n${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
+    : "N/A"
+
   return {
-    id: `#${order.order_id}`,
+    id: `${order.order_id}`,
     orderId: order.order_id,
     service: order.service_name || "Unknown",
     quantity: order.quantity || 0,
     status: order.status || "Pending",
-    date: order.created_at
-      ? new Date(order.created_at).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })
-      : "N/A",
-    charge: order.charge || undefined,
-    start_count: order.start_count || undefined,
-    remains: order.remains || undefined,
+    date: formattedDate,
+    link: order.link || "N/A",
+    charge: order.charge || order.cost_coins || "0",
+    start_count: order.start_count || "0",
+    remains: order.remains || "0",
     currency: order.currency || undefined,
   }
 }
@@ -72,11 +72,15 @@ export default function MyOrdersPage() {
   const loadOrders = async (refreshStatus = true) => {
     try {
       setLoading(true)
-      const dbOrders = await db.getOrders()
-      const mapped = dbOrders.map(mapDbOrder)
+      const response = await fetch('/api/orders')
+      if (!response.ok) {
+        throw new Error('Failed to fetch orders')
+      }
+      const data = await response.json()
+      const mapped = data.orders.map(mapDbOrder)
       setOrders(mapped)
-      if (refreshStatus && dbOrders.length > 0) {
-        await refreshOrderStatuses(dbOrders.map((order) => order.order_id))
+      if (refreshStatus && data.orders.length > 0) {
+        await refreshOrderStatuses(data.orders.map((order: any) => order.order_id))
       }
     } catch (err) {
       console.error("Failed to load orders:", err)
@@ -89,7 +93,16 @@ export default function MyOrdersPage() {
   const refreshOrderStatuses = async (orderIds?: number[]) => {
     try {
       setRefreshing(true)
-      const ids = orderIds && orderIds.length > 0 ? orderIds : await db.getOrderIds()
+      
+      // Get order IDs
+      let ids = orderIds
+      if (!ids || ids.length === 0) {
+        const response = await fetch('/api/orders')
+        if (!response.ok) throw new Error('Failed to fetch orders')
+        const data = await response.json()
+        ids = data.orders.map((order: any) => order.order_id)
+      }
+      
       if (ids.length === 0) {
         setOrders([])
         return
@@ -105,7 +118,14 @@ export default function MyOrdersPage() {
             toast.error(`Order ${orderId}: ${status.error}`)
             return
           }
-          await db.updateOrderStatus(orderId, status)
+          
+          // Update order status via API
+          await fetch(`/api/orders/${orderId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(status)
+          })
+          
           const index = updatedOrders.findIndex((o) => o.orderId === orderId)
           if (index !== -1) {
             updatedOrders[index] = {
@@ -150,16 +170,31 @@ export default function MyOrdersPage() {
         return
       }
 
-      await db.createOrder({
-        orderId,
-        serviceId: 0,
-        serviceName: "Manual Entry",
-        link: "N/A",
-        quantity: status.remains ? Number(status.remains) : 0,
-        costCoins: status.charge ? Number(status.charge) : 0,
+      // Create order via API
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId,
+          serviceId: 0,
+          serviceName: "Manual Entry",
+          link: "N/A",
+          quantity: status.remains ? Number(status.remains) : 0,
+          costCoins: status.charge ? Number(status.charge) : 0,
+        })
       })
 
-      await db.updateOrderStatus(orderId, status)
+      if (!response.ok) {
+        throw new Error('Failed to create order')
+      }
+
+      // Update order status
+      await fetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(status)
+      })
+
       setNewOrderId("")
       setDialogOpen(false)
       toast.success("Order added successfully")
@@ -188,7 +223,14 @@ export default function MyOrdersPage() {
       } else {
         setStatusResult(status)
         toast.success(`Status: ${status.status || "Unknown"}`)
-        await db.updateOrderStatus(orderId, status)
+        
+        // Update order status via API
+        await fetch(`/api/orders/${orderId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(status)
+        })
+        
         await loadOrders(false)
       }
     } catch (err) {

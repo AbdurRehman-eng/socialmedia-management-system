@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/auth-context"
 import PageLayout from "@/components/page-layout"
 import { smmApi, type Service } from "@/lib/api"
 import {
@@ -19,6 +21,8 @@ import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 
 export default function AdminPage() {
+  const router = useRouter()
+  const { user, loading: authLoading } = useAuth()
   const [services, setServices] = useState<Service[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
@@ -27,6 +31,13 @@ export default function AdminPage() {
   const [coinToUsdRate, setCoinToUsdRateState] = useState(getCoinToUsdRate())
   const [editingService, setEditingService] = useState<number | null>(null)
   const [editForm, setEditForm] = useState({ markup: "", customPrice: "" })
+
+  // Check authentication
+  useEffect(() => {
+    if (!authLoading && (!user || user.role !== 'admin')) {
+      router.push('/admin/login')
+    }
+  }, [user, authLoading, router])
 
   useEffect(() => {
     async function fetchServices() {
@@ -43,8 +54,10 @@ export default function AdminPage() {
       }
     }
 
-    fetchServices()
-  }, [])
+    if (user && user.role === 'admin') {
+      fetchServices()
+    }
+  }, [user])
 
   const handleSaveDefaultMarkup = () => {
     const markup = Number(defaultMarkup)
@@ -63,7 +76,7 @@ export default function AdminPage() {
       return
     }
     setCoinToUsdRate(rate)
-    toast.success("Coin to USD rate saved!")
+    toast.success("Coin to PHP rate saved!")
   }
 
   const handleEditService = (service: Service) => {
@@ -118,7 +131,7 @@ export default function AdminPage() {
       s.category.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  if (loading) {
+  if (authLoading || loading || !user) {
     return (
       <PageLayout title="Admin Panel">
         <div className="flex items-center justify-center py-12">
@@ -128,8 +141,12 @@ export default function AdminPage() {
     )
   }
 
+  if (user.role !== 'admin') {
+    return null // Will be redirected by useEffect
+  }
+
   return (
-    <PageLayout title="Admin Panel - Pricing Management">
+    <PageLayout title="Pricing Management">
       <div className="space-y-6">
         {/* Global Settings */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100">
@@ -144,7 +161,7 @@ export default function AdminPage() {
                 Default Markup (Multiplier)
               </label>
               <p className="text-xs text-gray-500 mb-2">
-                Applied to services without custom pricing. Example: 1.2 = 20% markup
+                Applied to services without custom pricing. Example: 1.5 = 50% markup
               </p>
               <div className="flex gap-2">
                 <Input
@@ -163,10 +180,10 @@ export default function AdminPage() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
-                Coin to USD Rate
+                Coin to PHP Rate
               </label>
               <p className="text-xs text-gray-500 mb-2">
-                How many coins = 1 USD. Example: 1 = 1 coin per USD
+                How many coins = 1 PHP. Example: 1 = 1 coin per PHP
               </p>
               <div className="flex gap-2">
                 <Input
@@ -213,10 +230,10 @@ export default function AdminPage() {
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <h3 className="font-semibold text-slate-900">{service.name}</h3>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {service.category} • Provider Price: ${service.rate}/unit
-                      </p>
+                    <h3 className="font-semibold text-slate-900">{service.name}</h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {service.category} • Provider Price: ₱{service.rate}/unit
+                    </p>
                       {rule && (
                         <div className="mt-2 text-sm">
                           {rule.customPrice !== undefined ? (

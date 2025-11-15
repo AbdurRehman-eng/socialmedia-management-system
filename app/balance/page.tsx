@@ -63,7 +63,7 @@ export default function BalancePage() {
                   )}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  ≈ ${usdEquivalent.toFixed(2)} USD
+                  ≈ ₱{usdEquivalent.toFixed(2)} PHP
                 </p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -147,7 +147,7 @@ export default function BalancePage() {
                   )}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
-                  ≈ ${usdEquivalent.toFixed(2)} USD
+                  ≈ ₱{usdEquivalent.toFixed(2)} PHP
                 </p>
               </div>
             </div>

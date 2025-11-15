@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { getCoinBalance } from '@/lib/coins'
 
 export function useCoinBalance() {
   const [balance, setBalance] = useState<number | null>(null)
@@ -8,8 +7,12 @@ export function useCoinBalance() {
   useEffect(() => {
     async function fetchBalance() {
       try {
-        const coins = await getCoinBalance()
-        setBalance(coins)
+        const response = await fetch('/api/balance')
+        if (!response.ok) {
+          throw new Error('Failed to fetch balance')
+        }
+        const data = await response.json()
+        setBalance(data.balance)
       } catch (error) {
         console.error('Error fetching coin balance:', error)
         setBalance(1000) // Fallback
@@ -24,8 +27,12 @@ export function useCoinBalance() {
   const refresh = async () => {
     setLoading(true)
     try {
-      const coins = await getCoinBalance()
-      setBalance(coins)
+      const response = await fetch('/api/balance')
+      if (!response.ok) {
+        throw new Error('Failed to fetch balance')
+      }
+      const data = await response.json()
+      setBalance(data.balance)
     } catch (error) {
       console.error('Error refreshing coin balance:', error)
     } finally {

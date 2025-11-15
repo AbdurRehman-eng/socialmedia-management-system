@@ -245,7 +245,7 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
               <option value="">Choose...</option>
               {filteredServices.map((service) => (
                 <option key={service.service} value={service.service}>
-                  {service.name} ({service.type}) - ${service.rate}/unit
+                  {service.name} ({service.type}) - ₱{service.rate}/unit
                 </option>
               ))}
             </select>

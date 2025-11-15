@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useEffect, Suspense } from "react"
+import { useAuth } from "@/contexts/auth-context"
 import Sidebar from "./sidebar"
 import TopBar from "./top-bar"
 import StatCards from "./stat-cards"
 import CreateOrderForm from "./create-order-form"
 import OrdersTable from "./orders-table"
 import { Loader2 } from "lucide-react"
-import * as db from "@/lib/db"
 
 interface Order {
   id: string
@@ -16,6 +16,7 @@ interface Order {
   quantity: number
   status: string
   date: string
+  link: string
   charge?: string
   start_count?: string
   remains?: string
@@ -23,35 +24,40 @@ interface Order {
 }
 
 function mapDbOrder(order: any): Order {
+  const date = order.created_at ? new Date(order.created_at) : null
+  const formattedDate = date
+    ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}\n${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}:${String(date.getSeconds()).padStart(2, '0')}`
+    : "N/A"
+
   return {
-    id: `#${order.order_id}`,
+    id: `${order.order_id}`,
     orderId: order.order_id,
     service: order.service_name || "Unknown",
     quantity: order.quantity || 0,
     status: order.status || "Pending",
-    date: order.created_at
-      ? new Date(order.created_at).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })
-      : "N/A",
-    charge: order.charge || undefined,
-    start_count: order.start_count || undefined,
-    remains: order.remains || undefined,
+    date: formattedDate,
+    link: order.link || "N/A",
+    charge: order.charge || order.cost_coins || "0",
+    start_count: order.start_count || "0",
+    remains: order.remains || "0",
     currency: order.currency || undefined,
   }
 }
 
 export default function DashboardLayout() {
+  const { user, loading: authLoading } = useAuth()
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
 
   const loadOrders = async () => {
     try {
       setLoading(true)
-      const dbOrders = await db.getOrders()
-      const mapped = dbOrders.map(mapDbOrder)
+      const response = await fetch('/api/orders')
+      if (!response.ok) {
+        throw new Error('Failed to fetch orders')
+      }
+      const data = await response.json()
+      const mapped = data.orders.map(mapDbOrder)
       setOrders(mapped)
     } catch (err) {
       console.error("Failed to load orders:", err)

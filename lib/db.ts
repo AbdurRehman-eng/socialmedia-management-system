@@ -12,11 +12,38 @@ function debugLog(...args: unknown[]) {
 }
 
 /**
- * Get or create default user
+ * Get current user ID from session (server-side only)
+ * This should only be called from API routes or server components
+ */
+export async function getCurrentUserIdFromCookies(): Promise<string> {
+  // This function should only be called server-side
+  if (typeof window !== 'undefined') {
+    throw new Error('getCurrentUserIdFromCookies can only be called server-side')
+  }
+  
+  try {
+    const { cookies } = await import('next/headers')
+    const cookieStore = await cookies()
+    const sessionCookie = cookieStore.get('smm_session')
+    
+    if (sessionCookie && sessionCookie.value) {
+      const user = JSON.parse(sessionCookie.value)
+      return user.id
+    }
+  } catch (error) {
+    debugLog('Error getting user from session:', error)
+  }
+  
+  // Fallback to default user ID if no session
+  return DEFAULT_USER_ID
+}
+
+/**
+ * Get or create default user (legacy support)
  */
 async function getDefaultUserId(): Promise<string> {
-  // For now, return default user ID
-  // Later, this can be replaced with actual user authentication
+  // Return default user ID for now
+  // API routes will pass the correct userId from session
   return DEFAULT_USER_ID
 }
 

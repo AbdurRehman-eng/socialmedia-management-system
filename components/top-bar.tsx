@@ -1,48 +1,58 @@
 "use client"
 
-import { Search, Bell, User, Key } from "lucide-react"
-import { useState } from "react"
+import { User, LogOut } from "lucide-react"
+import { useAuth } from "@/contexts/auth-context"
+import { Button } from "./ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu"
 
 export default function TopBar() {
-  const [showSearch, setShowSearch] = useState(false)
+  const { user, logout } = useAuth()
 
   return (
     <header className="bg-green-100 border-b border-green-200 px-4 sm:px-6 md:px-8 py-3 sm:py-4 flex items-center justify-between gap-2 sm:gap-4">
-      {/* Admin Dropdown */}
-      <div className="hidden sm:flex items-center gap-2">
-        <button className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-slate-900 font-bold hover:bg-green-600 transition">
-          ≡
-        </button>
-        <span className="text-slate-900 font-semibold text-sm md:text-base">Admin</span>
+      {/* User Info */}
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-white font-bold">
+          {user?.username?.charAt(0).toUpperCase()}
+        </div>
+        <span className="text-slate-900 font-semibold text-sm md:text-base">
+          {user?.username || "User"}
+        </span>
       </div>
 
-      {/* Search Bar - Hidden on mobile, shown on tablet+ */}
-      <div className="hidden md:flex flex-1 mx-4 lg:mx-8 relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-        <input
-          type="text"
-          placeholder="Search"
-          className="w-full pl-10 pr-4 py-2 bg-white rounded-lg border border-green-200 focus:outline-none focus:ring-2 focus:ring-green-500 text-slate-900 placeholder-gray-400 text-sm"
-        />
-      </div>
-
-      {/* Mobile Search Toggle */}
-      <button className="md:hidden p-2 hover:bg-green-200 rounded-lg transition">
-        <Search size={20} className="text-slate-900" />
-      </button>
+      {/* Spacer */}
+      <div className="flex-1"></div>
 
       {/* Right Icons */}
       <div className="flex items-center gap-2 sm:gap-4">
-        <button className="p-2 hover:bg-green-200 rounded-lg transition hidden sm:block">
-          <Bell size={20} className="text-slate-900" />
-        </button>
-        <button className="p-2 hover:bg-green-200 rounded-lg transition hidden sm:block">
-          <User size={20} className="text-slate-900" />
-        </button>
-        <button className="flex items-center gap-1 sm:gap-2 bg-slate-900 text-green-500 px-3 sm:px-4 py-2 rounded-lg font-semibold hover:bg-slate-800 transition text-xs sm:text-sm md:text-base">
-          <Key size={16} className="hidden sm:inline" />
-          API Key
-        </button>
+        {/* User Profile Dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="rounded-lg">
+              <User size={20} className="text-slate-900" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>
+              <div>
+                <p className="font-semibold">{user?.username}</p>
+                <p className="text-xs text-gray-500">{user?.email}</p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={logout} className="text-red-600 cursor-pointer">
+              <LogOut size={16} className="mr-2" />
+              Logout
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </header>
   )

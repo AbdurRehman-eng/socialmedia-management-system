@@ -2,10 +2,10 @@
 
 import * as db from './db'
 
-// Default: 1 coin = 1 USD (can be changed by admin)
-const DEFAULT_COIN_TO_USD = 1
-// Default markup: 20% (can be changed by admin)
-const DEFAULT_MARKUP = 1.2
+// Default: 1 coin = 1 PHP (can be changed by admin)
+const DEFAULT_COIN_TO_PHP = 1
+// Default markup: 50% higher (1.5 = 50% markup)
+const DEFAULT_MARKUP = 1.5
 
 export interface PricingRule {
   serviceId: number
@@ -68,23 +68,23 @@ export async function deductCoins(amount: number, userId?: string): Promise<bool
 }
 
 /**
- * Get coin to USD conversion rate
+ * Get coin to PHP conversion rate
  */
-export async function getCoinToUsdRate(): Promise<number> {
+export async function getCoinToPhpRate(): Promise<number> {
   try {
     const rate = await db.getCoinToUsdRate()
     cachedCoinRate = rate
     return rate
   } catch (error) {
     console.error("Error reading coin rate:", error)
-    return cachedCoinRate || DEFAULT_COIN_TO_USD
+    return cachedCoinRate || DEFAULT_COIN_TO_PHP
   }
 }
 
 /**
- * Set coin to USD conversion rate
+ * Set coin to PHP conversion rate
  */
-export async function setCoinToUsdRate(rate: number): Promise<void> {
+export async function setCoinToPhpRate(rate: number): Promise<void> {
   try {
     await db.setCoinToUsdRate(rate)
     cachedCoinRate = rate
@@ -94,21 +94,29 @@ export async function setCoinToUsdRate(rate: number): Promise<void> {
   }
 }
 
+// Backwards compatibility aliases
+export const getCoinToUsdRate = getCoinToPhpRate
+export const setCoinToUsdRate = setCoinToPhpRate
+
 /**
- * Convert USD to Coins
+ * Convert PHP to Coins
  */
-export async function usdToCoins(usd: number): Promise<number> {
-  const rate = await getCoinToUsdRate()
-  return usd * rate
+export async function phpToCoins(php: number): Promise<number> {
+  const rate = await getCoinToPhpRate()
+  return php * rate
 }
 
 /**
- * Convert Coins to USD
+ * Convert Coins to PHP
  */
-export async function coinsToUsd(coins: number): Promise<number> {
-  const rate = await getCoinToUsdRate()
+export async function coinsToPhp(coins: number): Promise<number> {
+  const rate = await getCoinToPhpRate()
   return coins / rate
 }
+
+// Backwards compatibility aliases
+export const usdToCoins = phpToCoins
+export const coinsToUsd = coinsToPhp
 
 /**
  * Get default markup percentage
@@ -198,21 +206,21 @@ export async function calculateCoinPrice(providerUsdPrice: number, serviceId: nu
   const rule = await getPricingRule(serviceId)
   const defaultMarkup = await getDefaultMarkup()
   
-  let finalUsdPrice: number
+  let finalPhpPrice: number
   
   if (rule?.customPrice !== undefined) {
     // Use custom fixed price
     return rule.customPrice
   } else if (rule?.markup) {
     // Use service-specific markup
-    finalUsdPrice = providerUsdPrice * rule.markup
+    finalPhpPrice = providerUsdPrice * rule.markup
   } else {
     // Use default markup
-    finalUsdPrice = providerUsdPrice * defaultMarkup
+    finalPhpPrice = providerUsdPrice * defaultMarkup
   }
   
-  // Convert USD to coins
-  return await usdToCoins(finalUsdPrice)
+  // Convert PHP to coins
+  return await phpToCoins(finalPhpPrice)
 }
 
 /**
@@ -227,5 +235,5 @@ export async function calculateOrderCost(providerUsdPricePerUnit: number, quanti
  * Format coins for display
  */
 export function formatCoins(coins: number): string {
-  return `${coins.toFixed(2)} coins`
+  return `₱${coins.toFixed(2)}`
 }
