@@ -27,14 +27,22 @@ export async function getCurrentUserIdFromCookies(): Promise<string> {
     const sessionCookie = cookieStore.get('smm_session')
     
     if (sessionCookie && sessionCookie.value) {
-      const user = JSON.parse(sessionCookie.value)
-      return user.id
+      try {
+        const user = JSON.parse(sessionCookie.value)
+        if (user && user.id) {
+          debugLog('User ID from session:', user.id)
+          return user.id
+        }
+      } catch (parseError) {
+        debugLog('Error parsing session cookie:', parseError)
+      }
     }
   } catch (error) {
     debugLog('Error getting user from session:', error)
   }
   
   // Fallback to default user ID if no session
+  debugLog('No valid session found, using DEFAULT_USER_ID')
   return DEFAULT_USER_ID
 }
 

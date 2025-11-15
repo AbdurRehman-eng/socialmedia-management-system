@@ -109,6 +109,11 @@ INSERT INTO users (id, email, username, password_hash, role) VALUES
   ('00000000-0000-0000-0000-000000000001', 'admin@smmpanel.com', 'admin', '$2a$10$rKJ5VqLhXJZ5ZqZqZqZqZuHjFzYzKzXzXzXzXzXzXzXzXzXzXzXzX', 'admin')
 ON CONFLICT (id) DO NOTHING;
 
+-- Create default coin balance for admin user
+INSERT INTO coin_balances (user_id, coins) VALUES 
+  ('00000000-0000-0000-0000-000000000001', 1000.00)
+ON CONFLICT (user_id) DO NOTHING;
+
 -- Note: In production, you should create the admin user through the application
 -- with a properly hashed password. The above is just a placeholder.
 

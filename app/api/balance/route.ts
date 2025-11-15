@@ -18,12 +18,12 @@ export async function GET() {
   }
 }
 
-// Update user's coin balance
+// Update user's coin balance (add or deduct)
 export async function POST(request: NextRequest) {
   try {
     const userId = await getCurrentUserIdFromCookies()
     const body = await request.json()
-    const { amount } = body
+    const { amount, action } = body
 
     if (typeof amount !== 'number') {
       return NextResponse.json(
@@ -32,7 +32,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    await db.addCoins(amount, userId)
+    if (action === 'deduct') {
+      // Deduct coins
+      const success = await db.deductCoins(amount, userId)
+      if (!success) {
+        return NextResponse.json(
+          { error: 'Insufficient balance' },
+          { status: 400 }
+        )
+      }
+    } else {
+      // Add coins (default)
+      await db.addCoins(amount, userId)
+    }
+    
     const newBalance = await db.getCoinBalance(userId)
     
     return NextResponse.json({ balance: newBalance })

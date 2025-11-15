@@ -13,7 +13,6 @@ import {
   formatCoins,
 } from "@/lib/coins"
 import { useCoinBalance } from "@/hooks/use-coin-balance"
-import * as db from "@/lib/db"
 
 export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (order: any) => void }) {
   const searchParams = useSearchParams()
@@ -127,14 +126,21 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
     try {
       setSubmitting(true)
       
-      // Deduct coins before creating order
-      const deducted = await db.deductCoins(cost)
-      if (!deducted) {
+      // Deduct coins via API
+      const deductResponse = await fetch('/api/balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'deduct', amount: cost })
+      })
+
+      if (!deductResponse.ok) {
         toast.error("Failed to deduct coins. Please try again.")
         setSubmitting(false)
         return
       }
+
       refreshBalance() // Refresh balance display
+      
       const orderParams: any = {
         service: Number(formData.service),
         link: formData.link,
@@ -150,14 +156,18 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
 
       const response = await smmApi.addOrder(orderParams)
       
-      // Save order to Supabase
-      await db.createOrder({
-        orderId: response.order,
-        serviceId: selectedService.service,
-        serviceName: selectedService.name,
-        link: formData.link,
-        quantity: quantity,
-        costCoins: cost,
+      // Save order to Supabase via API
+      await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: response.order,
+          serviceId: selectedService.service,
+          serviceName: selectedService.name,
+          link: formData.link,
+          quantity: quantity,
+          costCoins: cost,
+        })
       })
       
       toast.success(`Order created successfully! Order ID: ${response.order}. ${formatCoins(cost)} deducted.`)
