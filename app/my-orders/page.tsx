@@ -69,7 +69,7 @@ export default function MyOrdersPage() {
   const [cancelInput, setCancelInput] = useState("")
   const [cancelLoading, setCancelLoading] = useState(false)
 
-  const loadOrders = async (refreshStatus = true) => {
+  const loadOrders = async (refreshStatus = false) => {
     try {
       setLoading(true)
       const response = await fetch('/api/orders')
@@ -79,9 +79,9 @@ export default function MyOrdersPage() {
       const data = await response.json()
       const mapped = data.orders.map(mapDbOrder)
       setOrders(mapped)
-      if (refreshStatus && data.orders.length > 0) {
-        await refreshOrderStatuses(data.orders.map((order: any) => order.order_id))
-      }
+      
+      // Note: We don't auto-refresh statuses on load anymore to avoid clearing orders
+      // Use the manual refresh button instead
     } catch (err) {
       console.error("Failed to load orders:", err)
       toast.error("Failed to load orders")
@@ -94,28 +94,31 @@ export default function MyOrdersPage() {
     try {
       setRefreshing(true)
       
-      // Get order IDs
+      // First, reload orders from database to get current state
+      const response = await fetch('/api/orders')
+      if (!response.ok) throw new Error('Failed to fetch orders')
+      const data = await response.json()
+      const currentOrders = data.orders.map(mapDbOrder)
+      
+      // Get order IDs to refresh
       let ids = orderIds
       if (!ids || ids.length === 0) {
-        const response = await fetch('/api/orders')
-        if (!response.ok) throw new Error('Failed to fetch orders')
-        const data = await response.json()
-        ids = data.orders.map((order: any) => order.order_id)
+        ids = currentOrders.map((order: Order) => order.orderId)
       }
       
       if (ids.length === 0) {
-        setOrders([])
+        toast.info("No orders to refresh")
         return
       }
 
       const statuses = await smmApi.getMultipleOrderStatus(ids)
-      const updatedOrders = [...orders]
+      const updatedOrders = [...currentOrders]
 
       await Promise.all(
         Object.entries(statuses).map(async ([orderIdStr, status]) => {
           const orderId = Number(orderIdStr)
           if (status.error) {
-            toast.error(`Order ${orderId}: ${status.error}`)
+            console.error(`Order ${orderId} status error:`, status.error)
             return
           }
           
@@ -151,7 +154,7 @@ export default function MyOrdersPage() {
   }
 
   useEffect(() => {
-    loadOrders(true)
+    loadOrders(false)
   }, [])
 
   const handleAddOrder = async () => {
