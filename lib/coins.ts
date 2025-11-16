@@ -198,26 +198,31 @@ export async function deletePricingRule(serviceId: number): Promise<void> {
 
 /**
  * Calculate coin price for a service
- * @param providerRateInUsdPer1000 - The price from the provider per 1000 units (in USD)
+ * @param providerRateInUsdPerUnit - The price from the provider per 1 unit (in USD)
  * @param serviceId - The service ID
  * @returns The price in coins per 1000 units that the client should pay
  * 
  * PRICING FORMULA:
- * 1. Convert USD to PHP: providerRateInPHP = providerRateInUSD × usdToPhpRate
- * 2. Apply markup: yourPrice = providerRateInPHP × markup (default 1.5 = 50% markup)
- * 3. Convert to coins: finalCoins = yourPrice × coinRate (default 1 coin = 1 PHP)
+ * 1. Convert to per 1000: providerRatePer1000 = providerRatePerUnit × 1000
+ * 2. Convert USD to PHP: providerRateInPHP = providerRatePer1000 × usdToPhpRate
+ * 3. Apply markup: yourPrice = providerRateInPHP × markup (default 1.5 = 50% markup)
+ * 4. Convert to coins: finalCoins = yourPrice × coinRate (default 1 coin = 1 PHP)
  * 
- * Example: Provider = $1.00/1000, USD→PHP rate = 50, markup = 1.5
- *   → PHP price = $1.00 × 50 = ₱50
- *   → Your price = ₱50 × 1.5 = ₱75/1000
+ * Example: Provider = $0.05/unit, USD→PHP rate = 50, markup = 1.5
+ *   → Per 1000 = $0.05 × 1000 = $50/1000
+ *   → PHP price = $50 × 50 = ₱2500/1000
+ *   → Your price = ₱2500 × 1.5 = ₱3750/1000
  */
-export async function calculateCoinPrice(providerRateInUsdPer1000: number, serviceId: number): Promise<number> {
+export async function calculateCoinPrice(providerRateInUsdPerUnit: number, serviceId: number): Promise<number> {
   const rule = await getPricingRule(serviceId)
   const defaultMarkup = await getDefaultMarkup()
   const usdToPhpRate = await db.getUsdToPhpRate()
   
-  // First convert USD to PHP
-  const providerRateInPhp = providerRateInUsdPer1000 * usdToPhpRate
+  // Step 1: Convert provider rate from per-unit to per-1000
+  const providerRateInUsdPer1000 = providerRateInUsdPerUnit * 1000
+  
+  // Step 2: Convert USD to PHP
+  const providerRateInPhpPer1000 = providerRateInUsdPer1000 * usdToPhpRate
   
   let finalPhpPrice: number
   
@@ -226,10 +231,10 @@ export async function calculateCoinPrice(providerRateInUsdPer1000: number, servi
     return rule.customPrice
   } else if (rule?.markup) {
     // Use service-specific markup
-    finalPhpPrice = providerRateInPhp * rule.markup
+    finalPhpPrice = providerRateInPhpPer1000 * rule.markup
   } else {
     // Use default markup (1.5 = 50% markup)
-    finalPhpPrice = providerRateInPhp * defaultMarkup
+    finalPhpPrice = providerRateInPhpPer1000 * defaultMarkup
   }
   
   // Convert PHP to coins (1 coin = 1 PHP by default)
@@ -238,18 +243,18 @@ export async function calculateCoinPrice(providerRateInUsdPer1000: number, servi
 
 /**
  * Calculate total coin cost for an order
- * @param providerRateInUsdPer1000 - The provider's rate per 1000 units (in USD)
+ * @param providerRateInUsdPerUnit - The provider's rate per 1 unit (in USD)
  * @param quantity - The quantity to order
  * @param serviceId - The service ID
  * @returns The total cost in coins for the order
  * 
  * CALCULATION:
- * 1. Convert provider USD rate to PHP and apply markup to get your price per 1000 units
+ * 1. Convert provider USD per-unit rate to PHP per-1000 and apply markup
  * 2. Calculate cost: (your_price_per_1000 / 1000) × quantity
  * 3. Or: (your_price_per_1000 × quantity) / 1000
  */
-export async function calculateOrderCost(providerRateInUsdPer1000: number, quantity: number, serviceId: number): Promise<number> {
-  const yourPricePer1000 = await calculateCoinPrice(providerRateInUsdPer1000, serviceId)
+export async function calculateOrderCost(providerRateInUsdPerUnit: number, quantity: number, serviceId: number): Promise<number> {
+  const yourPricePer1000 = await calculateCoinPrice(providerRateInUsdPerUnit, serviceId)
   // Calculate cost: (price per 1000 / 1000) × quantity = price per unit × quantity
   const pricePerUnit = yourPricePer1000 / 1000
   return pricePerUnit * quantity

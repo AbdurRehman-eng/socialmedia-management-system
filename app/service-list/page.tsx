@@ -38,10 +38,13 @@ export default function ServiceListPage() {
         const defaultMarkup = 1.5 // 50% markup
         
         const servicesWithCalculatedPrices: ServiceWithPrice[] = data.map((service) => {
-          const providerRateInUsd = Number(service.rate)
-          // Convert USD to PHP first, then apply markup
-          const providerRateInPhp = providerRateInUsd * usdToPhpRate
-          const coinPrice = providerRateInPhp * defaultMarkup
+          const providerRateInUsdPerUnit = Number(service.rate)
+          // Step 1: Convert to per 1000 units (provider gives per unit)
+          const providerRateInUsdPer1000 = providerRateInUsdPerUnit * 1000
+          // Step 2: Convert USD to PHP
+          const providerRateInPhpPer1000 = providerRateInUsdPer1000 * usdToPhpRate
+          // Step 3: Apply markup
+          const coinPrice = providerRateInPhpPer1000 * defaultMarkup
           return { 
             ...service, 
             coinPrice, 

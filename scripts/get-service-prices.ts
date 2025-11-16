@@ -43,17 +43,20 @@ async function fetchServices(): Promise<Service[]> {
   }
 }
 
-function calculatePrice(providerRateInUsdPer1000: number): number {
-  // Provider rate is in USD per 1000 units (standard for SMM panels)
+function calculatePrice(providerRateInUsdPerUnit: number): number {
+  // Provider rate is in USD per 1 unit
   // Formula: 
-  //   1. Convert USD to PHP: providerRateInPhp = providerRateInUsd × USD_TO_PHP_RATE
-  //   2. Apply markup: YOUR_PRICE = providerRateInPhp × 1.5 (add 50% markup)
-  // Example: If provider rate = $1.00 per 1000, USD→PHP = 50, markup = 1.5
-  //          Provider in PHP = $1.00 × 50 = ₱50.00 per 1000
-  //          Your price = ₱50.00 × 1.5 = ₱75.00 per 1000
-  //          Your profit = ₱25.00 per 1000
-  const providerRateInPhp = providerRateInUsdPer1000 * USD_TO_PHP_RATE
-  return providerRateInPhp * DEFAULT_MARKUP * COIN_TO_PHP_RATE
+  //   1. Convert to per 1000: providerRatePer1000 = providerRatePerUnit × 1000
+  //   2. Convert USD to PHP: providerRateInPhp = providerRatePer1000 × USD_TO_PHP_RATE
+  //   3. Apply markup: YOUR_PRICE = providerRateInPhp × 1.5 (add 50% markup)
+  // Example: If provider rate = $0.05 per unit, USD→PHP = 50, markup = 1.5
+  //          Per 1000 units = $0.05 × 1000 = $50.00 per 1000
+  //          Provider in PHP = $50.00 × 50 = ₱2500.00 per 1000
+  //          Your price = ₱2500.00 × 1.5 = ₱3750.00 per 1000
+  //          Your profit = ₱1250.00 per 1000
+  const providerRateInUsdPer1000 = providerRateInUsdPerUnit * 1000
+  const providerRateInPhpPer1000 = providerRateInUsdPer1000 * USD_TO_PHP_RATE
+  return providerRateInPhpPer1000 * DEFAULT_MARKUP * COIN_TO_PHP_RATE
 }
 
 async function main() {
@@ -76,15 +79,17 @@ async function main() {
   console.log(`Coin Rate: 1 coin = ₱${COIN_TO_PHP_RATE}`)
   console.log()
   console.log("PRICING FORMULA:")
-  console.log("  1. Convert: PROVIDER RATE (USD) × USD_TO_PHP_RATE = PROVIDER RATE (PHP)")
-  console.log("  2. Markup: PROVIDER RATE (PHP) × 1.5 = YOUR PRICE")
-  console.log("  3. Profit: YOUR PRICE - PROVIDER RATE (PHP)")
+  console.log("  1. Per 1000: PROVIDER RATE (USD/unit) × 1000 = PROVIDER RATE (USD/1000)")
+  console.log("  2. Convert: PROVIDER RATE (USD/1000) × USD_TO_PHP_RATE = PROVIDER RATE (PHP/1000)")
+  console.log("  3. Markup: PROVIDER RATE (PHP/1000) × 1.5 = YOUR PRICE")
+  console.log("  4. Profit: YOUR PRICE - PROVIDER RATE (PHP/1000)")
   console.log()
   console.log("EXAMPLE:")
-  console.log("  If Provider charges $1.00 per 1000 units:")
-  console.log("  → Convert to PHP: $1.00 × 50 = ₱50.00 per 1000")
-  console.log("  → Your Price: ₱50.00 × 1.5 = ₱75.00 per 1000 units")
-  console.log("  → Your Profit: ₱75.00 - ₱50.00 = ₱25.00 per 1000 units")
+  console.log("  If Provider charges $0.05 per unit:")
+  console.log("  → Per 1000: $0.05 × 1000 = $50.00 per 1000")
+  console.log("  → Convert to PHP: $50.00 × 50 = ₱2500.00 per 1000")
+  console.log("  → Your Price: ₱2500.00 × 1.5 = ₱3750.00 per 1000 units")
+  console.log("  → Your Profit: ₱3750.00 - ₱2500.00 = ₱1250.00 per 1000 units")
   console.log("=" .repeat(100))
   console.log()
 
@@ -107,15 +112,16 @@ async function main() {
       categoryServices
         .sort((a, b) => a.name.localeCompare(b.name))
         .forEach(service => {
-          const providerRateInUsd = parseFloat(service.rate)
-          const providerRateInPhp = providerRateInUsd * USD_TO_PHP_RATE
-          const yourPrice = calculatePrice(providerRateInUsd)
-          const profit = yourPrice - providerRateInPhp
+          const providerRateInUsdPerUnit = parseFloat(service.rate)
+          const providerRateInUsdPer1000 = providerRateInUsdPerUnit * 1000
+          const providerRateInPhpPer1000 = providerRateInUsdPer1000 * USD_TO_PHP_RATE
+          const yourPrice = calculatePrice(providerRateInUsdPerUnit)
+          const profit = yourPrice - providerRateInPhpPer1000
           
           console.log(`\n🔹 ${service.name}`)
           console.log(`   Service ID: ${service.service}`)
           console.log(`   Type: ${service.type}`)
-          console.log(`   Provider Rate: $${providerRateInUsd.toFixed(2)} → ₱${providerRateInPhp.toFixed(2)} per 1000`)
+          console.log(`   Provider Rate: $${providerRateInUsdPerUnit.toFixed(4)}/unit → $${providerRateInUsdPer1000.toFixed(2)}/1000 → ₱${providerRateInPhpPer1000.toFixed(2)}/1000`)
           console.log(`   YOUR PRICE: ₱${yourPrice.toFixed(2)} per 1000`)
           console.log(`   Profit: ₱${profit.toFixed(2)} per 1000`)
           console.log(`   Min Order: ${service.min} | Max Order: ${service.max}`)
@@ -138,25 +144,28 @@ async function main() {
   console.log(`Total Services: ${services.length}`)
   console.log(`Total Categories: ${Object.keys(servicesByCategory).length}`)
   
-  const avgProviderRateInUsd = services.reduce((sum, s) => sum + parseFloat(s.rate), 0) / services.length
-  const avgProviderRateInPhp = avgProviderRateInUsd * USD_TO_PHP_RATE
-  const avgYourPrice = calculatePrice(avgProviderRateInUsd)
+  const avgProviderRateInUsdPerUnit = services.reduce((sum, s) => sum + parseFloat(s.rate), 0) / services.length
+  const avgProviderRateInUsdPer1000 = avgProviderRateInUsdPerUnit * 1000
+  const avgProviderRateInPhpPer1000 = avgProviderRateInUsdPer1000 * USD_TO_PHP_RATE
+  const avgYourPrice = calculatePrice(avgProviderRateInUsdPerUnit)
   
-  console.log(`Average Provider Rate: $${avgProviderRateInUsd.toFixed(2)} → ₱${avgProviderRateInPhp.toFixed(2)} per 1000`)
+  console.log(`Average Provider Rate: $${avgProviderRateInUsdPerUnit.toFixed(4)}/unit → $${avgProviderRateInUsdPer1000.toFixed(2)}/1000 → ₱${avgProviderRateInPhpPer1000.toFixed(2)}/1000`)
   console.log(`Average Your Price: ₱${avgYourPrice.toFixed(2)} per 1000`)
-  console.log(`Average Profit: ₱${(avgYourPrice - avgProviderRateInPhp).toFixed(2)} per 1000`)
+  console.log(`Average Profit: ₱${(avgYourPrice - avgProviderRateInPhpPer1000).toFixed(2)} per 1000`)
   
-  const lowestPriceInUsd = Math.min(...services.map(s => parseFloat(s.rate)))
-  const highestPriceInUsd = Math.max(...services.map(s => parseFloat(s.rate)))
-  const lowestPriceInPhp = lowestPriceInUsd * USD_TO_PHP_RATE
-  const highestPriceInPhp = highestPriceInUsd * USD_TO_PHP_RATE
+  const lowestPriceInUsdPerUnit = Math.min(...services.map(s => parseFloat(s.rate)))
+  const highestPriceInUsdPerUnit = Math.max(...services.map(s => parseFloat(s.rate)))
+  const lowestPriceInUsdPer1000 = lowestPriceInUsdPerUnit * 1000
+  const highestPriceInUsdPer1000 = highestPriceInUsdPerUnit * 1000
+  const lowestPriceInPhpPer1000 = lowestPriceInUsdPer1000 * USD_TO_PHP_RATE
+  const highestPriceInPhpPer1000 = highestPriceInUsdPer1000 * USD_TO_PHP_RATE
   
   console.log(`\nPrice Range (Provider):`)
-  console.log(`  Lowest: $${lowestPriceInUsd.toFixed(2)} → ₱${lowestPriceInPhp.toFixed(2)} per 1000`)
-  console.log(`  Highest: $${highestPriceInUsd.toFixed(2)} → ₱${highestPriceInPhp.toFixed(2)} per 1000`)
+  console.log(`  Lowest: $${lowestPriceInUsdPerUnit.toFixed(4)}/unit → ₱${lowestPriceInPhpPer1000.toFixed(2)}/1000`)
+  console.log(`  Highest: $${highestPriceInUsdPerUnit.toFixed(4)}/unit → ₱${highestPriceInPhpPer1000.toFixed(2)}/1000`)
   console.log(`\nPrice Range (Your Price):`)
-  console.log(`  Lowest: ₱${calculatePrice(lowestPriceInUsd).toFixed(2)} per 1000`)
-  console.log(`  Highest: ₱${calculatePrice(highestPriceInUsd).toFixed(2)} per 1000`)
+  console.log(`  Lowest: ₱${calculatePrice(lowestPriceInUsdPerUnit).toFixed(2)} per 1000`)
+  console.log(`  Highest: ₱${calculatePrice(highestPriceInUsdPerUnit).toFixed(2)} per 1000`)
   
   console.log("\n" + "=".repeat(100))
 }

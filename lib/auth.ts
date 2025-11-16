@@ -156,32 +156,50 @@ export async function getAllUsers(): Promise<AuthUser[]> {
  * Get all users with their coin balances (admin only)
  */
 export async function getAllUsersWithBalances(): Promise<(AuthUser & { balance: number })[]> {
-  const { data, error } = await supabase
+  // First get all users
+  const { data: usersData, error: usersError } = await supabase
     .from('users')
-    .select(`
-      id,
-      email,
-      username,
-      role,
-      is_active,
-      coin_balances (
-        coins
-      )
-    `)
+    .select('id, email, username, role, is_active')
     .order('created_at', { ascending: false })
 
-  if (error || !data) {
+  if (usersError || !usersData) {
+    console.error('[getAllUsersWithBalances] Error fetching users:', usersError)
     return []
   }
 
-  return data.map((user: any) => ({
-    id: user.id,
-    email: user.email,
-    username: user.username,
-    role: user.role,
-    isActive: user.is_active,
-    balance: user.coin_balances?.[0]?.coins || 0,
-  }))
+  // Then get all balances
+  const { data: balancesData, error: balancesError } = await supabase
+    .from('coin_balances')
+    .select('user_id, coins')
+
+  if (balancesError) {
+    console.error('[getAllUsersWithBalances] Error fetching balances:', balancesError)
+  }
+
+  // Create a map of user_id to balance for quick lookup
+  const balanceMap = new Map<string, number>()
+  if (balancesData) {
+    balancesData.forEach((balance: any) => {
+      balanceMap.set(balance.user_id, Number(balance.coins) || 0)
+    })
+  }
+
+  console.log('[getAllUsersWithBalances] Balance map:', Array.from(balanceMap.entries()))
+
+  // Combine users with their balances
+  return usersData.map((user: any) => {
+    const balance = balanceMap.get(user.id) || 0
+    console.log(`[getAllUsersWithBalances] User ${user.username} (${user.id}): balance = ${balance}`)
+    
+    return {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      role: user.role,
+      isActive: user.is_active,
+      balance: balance,
+    }
+  })
 }
 
 /**
