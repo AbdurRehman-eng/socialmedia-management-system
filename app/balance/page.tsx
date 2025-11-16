@@ -15,6 +15,7 @@ export default function BalancePage() {
   const [refreshing, setRefreshing] = useState(false)
   const { balance: coinBalance, loading: balanceLoading, refresh: refreshCoinBalance } = useCoinBalance()
   const [usdEquivalent, setUsdEquivalent] = useState(0)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const fetchProviderBalance = async (isRefresh = false) => {
     try {
@@ -35,6 +36,17 @@ export default function BalancePage() {
     }
   }
 
+  const checkIfAdmin = async () => {
+    try {
+      const response = await fetch("/api/auth/session")
+      const data = await response.json()
+      setIsAdmin(data.user?.role === "admin")
+    } catch (error) {
+      console.error("Error checking admin status:", error)
+      setIsAdmin(false)
+    }
+  }
+
   useEffect(() => {
     async function calculateUsd() {
       const usd = await coinsToUsd(coinBalance)
@@ -43,18 +55,27 @@ export default function BalancePage() {
     if (coinBalance > 0) {
       calculateUsd()
     }
-    fetchProviderBalance()
+    checkIfAdmin()
   }, [coinBalance])
+
+  useEffect(() => {
+    // Only fetch provider balance if admin
+    if (isAdmin) {
+      fetchProviderBalance()
+    } else {
+      setLoading(false)
+    }
+  }, [isAdmin])
 
   return (
     <PageLayout title="Account Balance">
       <div className="space-y-6">
         {/* Balance Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-6`}>
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm font-medium">Coin Balance</p>
+                <p className="text-gray-600 text-sm font-medium">Your Balance</p>
                 <p className="text-3xl font-bold text-slate-900 mt-2">
                   {balanceLoading ? (
                     <Loader2 className="w-6 h-6 animate-spin text-green-600" />
@@ -63,7 +84,7 @@ export default function BalancePage() {
                   )}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
-                  ≈ ₱{usdEquivalent.toFixed(2)} PHP
+                  {isAdmin ? "Available to allocate or use" : "Available for orders"}
                 </p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -73,7 +94,9 @@ export default function BalancePage() {
             <button
               onClick={async () => {
                 await refreshCoinBalance()
-                await fetchProviderBalance(true)
+                if (isAdmin) {
+                  await fetchProviderBalance(true)
+                }
               }}
               disabled={refreshing || balanceLoading}
               className="mt-4 text-sm text-green-600 hover:text-green-700 flex items-center gap-1 disabled:opacity-50"
@@ -83,34 +106,37 @@ export default function BalancePage() {
             </button>
           </div>
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm font-medium">Provider Balance</p>
-                {loading ? (
-                  <div className="flex items-center gap-2 mt-2">
-                    <Loader2 className="w-5 h-5 animate-spin text-green-600" />
-                    <span className="text-gray-400">Loading...</span>
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-3xl font-bold text-slate-900 mt-2">
-                      {providerBalance !== null ? `${providerCurrency} ${Number(providerBalance).toFixed(2)}` : "N/A"}
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">Backend API balance</p>
-                  </>
-                )}
-              </div>
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <TrendingUp className="text-blue-600" size={24} />
+          {/* Provider Balance - Only visible to Admin */}
+          {isAdmin && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-blue-100">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-gray-600 text-sm font-medium">Provider Balance</p>
+                  {loading ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+                      <span className="text-gray-400">Loading...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-3xl font-bold text-slate-900 mt-2">
+                        {providerBalance !== null ? `${providerCurrency} ${Number(providerBalance).toFixed(2)}` : "N/A"}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">SMM provider API balance</p>
+                    </>
+                  )}
+                </div>
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <TrendingUp className="text-blue-600" size={24} />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm font-medium">Available to Order</p>
+                <p className="text-gray-600 text-sm font-medium">Available to Spend</p>
                 <p className="text-3xl font-bold text-slate-900 mt-2">
                   {balanceLoading ? (
                     <Loader2 className="w-6 h-6 animate-spin text-green-600" />
@@ -118,7 +144,9 @@ export default function BalancePage() {
                     formatCoins(coinBalance)
                   )}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Your spending balance</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {isAdmin ? "For orders & allocations" : "For placing orders"}
+                </p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                 <Plus className="text-green-600" size={24} />
@@ -127,17 +155,27 @@ export default function BalancePage() {
           </div>
         </div>
 
-        {/* Add Balance Section */}
+        {/* Add Balance / Info Section */}
         <div className="bg-white rounded-2xl p-8 shadow-sm border border-green-100">
-          <h2 className="text-xl font-bold text-slate-900 mb-6">Add Balance</h2>
+          <h2 className="text-xl font-bold text-slate-900 mb-6">
+            {isAdmin ? "Balance Management" : "Add Balance"}
+          </h2>
           <div className="space-y-4 max-w-md">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800">
-                To add balance to your account, please contact support or use the payment methods provided by your administrator.
+            <div className={`${isAdmin ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-4`}>
+              <p className={`text-sm ${isAdmin ? 'text-green-800' : 'text-blue-800'}`}>
+                {isAdmin ? (
+                  <>
+                    As an admin, you can allocate coins to users from your balance. 
+                    Go to <a href="/admin/users" className="font-semibold underline">User Management</a> to allocate coins to users.
+                    When you allocate coins, they are deducted from your balance and added to the user's balance.
+                  </>
+                ) : (
+                  "To add balance to your account, please contact your administrator. They can allocate coins to your account."
+                )}
               </p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Current Coin Balance</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Current Balance</label>
               <div className="w-full px-4 py-3 bg-gray-50 border border-gray-300 rounded-lg">
                 <p className="text-lg font-semibold text-slate-900">
                   {balanceLoading ? (
@@ -147,7 +185,7 @@ export default function BalancePage() {
                   )}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
-                  ≈ ₱{usdEquivalent.toFixed(2)} PHP
+                  {isAdmin ? "Available for allocation and orders" : "Available for orders"}
                 </p>
               </div>
             </div>

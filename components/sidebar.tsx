@@ -77,7 +77,7 @@ export default function Sidebar() {
         {/* Logo Section */}
         <div className="relative p-8 border-b border-slate-700/50 bg-gradient-to-r from-slate-900 to-slate-800/50">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/30 overflow-hidden bg-white">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/30 overflow-hidden">
               <Image src="/logo.png" alt="Logo" width={48} height={48} className="w-full h-full object-contain" />
             </div>
             <div className="flex-1">

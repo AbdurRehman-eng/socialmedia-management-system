@@ -1,5 +1,6 @@
-import { RotateCcw } from "lucide-react"
+import { RotateCcw, X } from "lucide-react"
 import { Button } from "./ui/button"
+import { useState } from "react"
 
 interface Order {
   id: string
@@ -13,7 +14,50 @@ interface Order {
   remains?: string
 }
 
-export default function OrdersTable({ orders }: { orders: Order[] }) {
+interface OrdersTableProps {
+  orders: Order[]
+  onCancelOrder?: (orderId: number) => Promise<void>
+  onRefillOrder?: (orderId: number) => Promise<void>
+}
+
+export default function OrdersTable({ orders, onCancelOrder, onRefillOrder }: OrdersTableProps) {
+  const [cancelingOrders, setCancelingOrders] = useState<Set<string>>(new Set())
+  const [refillingOrders, setRefillingOrders] = useState<Set<string>>(new Set())
+
+  const handleCancel = async (orderId: string) => {
+    if (!onCancelOrder) return
+    
+    setCancelingOrders(prev => new Set(prev).add(orderId))
+    try {
+      await onCancelOrder(Number(orderId))
+    } finally {
+      setCancelingOrders(prev => {
+        const next = new Set(prev)
+        next.delete(orderId)
+        return next
+      })
+    }
+  }
+
+  const handleRefill = async (orderId: string) => {
+    if (!onRefillOrder) return
+    
+    setRefillingOrders(prev => new Set(prev).add(orderId))
+    try {
+      await onRefillOrder(Number(orderId))
+    } finally {
+      setRefillingOrders(prev => {
+        const next = new Set(prev)
+        next.delete(orderId)
+        return next
+      })
+    }
+  }
+
+  const canCancel = (status: string) => {
+    const s = status?.toLowerCase()
+    return s !== 'completed' && s !== 'canceled' && s !== 'cancelled' && !s?.includes('error')
+  }
   return (
     <div className="bg-white overflow-hidden">
       {/* Desktop Table */}
@@ -30,6 +74,7 @@ export default function OrdersTable({ orders }: { orders: Order[] }) {
               <th className="text-left py-3 px-4 font-semibold text-slate-700 text-xs uppercase tracking-wider border-b border-slate-200">Service</th>
               <th className="text-left py-3 px-4 font-semibold text-slate-700 text-xs uppercase tracking-wider border-b border-slate-200">Status</th>
               <th className="text-left py-3 px-4 font-semibold text-slate-700 text-xs uppercase tracking-wider border-b border-slate-200">Remains</th>
+              <th className="text-center py-3 px-4 font-semibold text-slate-700 text-xs uppercase tracking-wider border-b border-slate-200">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white">
@@ -77,16 +122,34 @@ export default function OrdersTable({ orders }: { orders: Order[] }) {
                   </div>
                 </td>
                 <td className="py-3 px-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-900 text-sm">{order.remains || '0'}</span>
-                    {order.status?.toLowerCase() === "completed" && (
+                  <span className="text-slate-900 text-sm">{order.remains || '0'}</span>
+                </td>
+                <td className="py-3 px-4">
+                  <div className="flex items-center justify-center gap-2">
+                    {order.status?.toLowerCase() === "completed" && onRefillOrder && (
                       <Button
                         variant="outline"
                         size="sm"
                         className="h-7 px-2 text-xs bg-slate-600 text-white hover:bg-slate-700 border-0"
+                        onClick={() => handleRefill(order.id)}
+                        disabled={refillingOrders.has(order.id)}
+                        title="Request refill for this order (charges same as original order)"
                       >
                         <RotateCcw className="w-3 h-3 mr-1" />
-                        Refill
+                        {refillingOrders.has(order.id) ? 'Processing...' : 'Refill'}
+                      </Button>
+                    )}
+                    {canCancel(order.status) && onCancelOrder && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs bg-red-600 text-white hover:bg-red-700 border-0"
+                        onClick={() => handleCancel(order.id)}
+                        disabled={cancelingOrders.has(order.id)}
+                        title="Cancel this order"
+                      >
+                        <X className="w-3 h-3 mr-1" />
+                        {cancelingOrders.has(order.id) ? 'Canceling...' : 'Cancel'}
                       </Button>
                     )}
                   </div>
@@ -143,18 +206,35 @@ export default function OrdersTable({ orders }: { orders: Order[] }) {
               </div>
             )}
             
-            {order.status?.toLowerCase() === "completed" && (
-              <div className="pt-2">
+            {/* Action Buttons */}
+            <div className="pt-2 flex gap-2">
+              {order.status?.toLowerCase() === "completed" && onRefillOrder && (
                 <Button
                   variant="outline"
                   size="sm"
-                  className="w-full h-8 text-xs bg-slate-600 text-white hover:bg-slate-700 border-0"
+                  className="flex-1 h-8 text-xs bg-slate-600 text-white hover:bg-slate-700 border-0"
+                  onClick={() => handleRefill(order.id)}
+                  disabled={refillingOrders.has(order.id)}
+                  title="Request refill for this order (charges same as original order)"
                 >
                   <RotateCcw className="w-3 h-3 mr-1" />
-                  Refill
+                  {refillingOrders.has(order.id) ? 'Processing...' : 'Refill'}
                 </Button>
-              </div>
-            )}
+              )}
+              {canCancel(order.status) && onCancelOrder && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 h-8 text-xs bg-red-600 text-white hover:bg-red-700 border-0"
+                  onClick={() => handleCancel(order.id)}
+                  disabled={cancelingOrders.has(order.id)}
+                  title="Cancel this order"
+                >
+                  <X className="w-3 h-3 mr-1" />
+                  {cancelingOrders.has(order.id) ? 'Canceling...' : 'Cancel Order'}
+                </Button>
+              )}
+            </div>
           </div>
         ))}
       </div>

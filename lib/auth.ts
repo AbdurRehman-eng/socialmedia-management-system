@@ -98,12 +98,12 @@ export async function createUser(userData: {
       return { success: false, error: error.message }
     }
 
-    // Create default coin balance for the user
+    // Create default coin balance for the user (starts at 0, admin will allocate)
     await supabase
       .from('coin_balances')
       .insert({
         user_id: data.id,
-        coins: 1000.00,
+        coins: 0.00,
       })
 
     return { success: true, userId: data.id }
@@ -149,6 +149,38 @@ export async function getAllUsers(): Promise<AuthUser[]> {
     username: user.username,
     role: user.role,
     isActive: user.is_active,
+  }))
+}
+
+/**
+ * Get all users with their coin balances (admin only)
+ */
+export async function getAllUsersWithBalances(): Promise<(AuthUser & { balance: number })[]> {
+  const { data, error } = await supabase
+    .from('users')
+    .select(`
+      id,
+      email,
+      username,
+      role,
+      is_active,
+      coin_balances (
+        coins
+      )
+    `)
+    .order('created_at', { ascending: false })
+
+  if (error || !data) {
+    return []
+  }
+
+  return data.map((user: any) => ({
+    id: user.id,
+    email: user.email,
+    username: user.username,
+    role: user.role,
+    isActive: user.is_active,
+    balance: user.coin_balances?.[0]?.coins || 0,
   }))
 }
 

@@ -16,10 +16,12 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- Coin balances table (one per user)
+-- Admin's balance represents their allocatable/usable balance
+-- Regular users' balances are allocated by admin
 CREATE TABLE IF NOT EXISTS coin_balances (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  coins DECIMAL(15, 2) DEFAULT 1000.00 NOT NULL,
+  coins DECIMAL(15, 2) DEFAULT 0.00 NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id)
@@ -99,7 +101,8 @@ CREATE TRIGGER update_settings_updated_at BEFORE UPDATE ON settings
 -- Insert default settings
 INSERT INTO settings (key, value) VALUES 
   ('default_markup', '1.5'),
-  ('coin_to_usd_rate', '1')
+  ('coin_to_usd_rate', '1'),
+  ('usd_to_php_rate', '50')
 ON CONFLICT (key) DO NOTHING;
 
 -- Create default admin user (password: admin123)
@@ -110,8 +113,9 @@ INSERT INTO users (id, email, username, password_hash, role) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- Create default coin balance for admin user
+-- Admin starts with 10000 coins to allocate to users or use themselves
 INSERT INTO coin_balances (user_id, coins) VALUES 
-  ('00000000-0000-0000-0000-000000000001', 1000.00)
+  ('00000000-0000-0000-0000-000000000001', 10000.00)
 ON CONFLICT (user_id) DO NOTHING;
 
 -- Note: In production, you should create the admin user through the application

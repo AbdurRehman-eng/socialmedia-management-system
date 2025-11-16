@@ -13,6 +13,7 @@ interface OrderData {
   cost_coins: number
   status: string
   created_at: string
+  link?: string
 }
 
 interface MonthlyReport {
@@ -105,6 +106,70 @@ export default function ReportsPage() {
     }).slice(0, 6) // Last 6 months
   }
 
+  const escapeCSVField = (field: any): string => {
+    // Convert to string
+    const str = String(field)
+    
+    // Check if field contains comma, quote, or newline
+    if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+      // Escape quotes by doubling them and wrap the entire field in quotes
+      return `"${str.replace(/"/g, '""')}"`
+    }
+    
+    return str
+  }
+
+  const exportAllOrdersToCSV = () => {
+    if (orders.length === 0) {
+      toast.error('No orders to export')
+      return
+    }
+    
+    // Add BOM for proper UTF-8 encoding in Excel
+    const BOM = '\uFEFF'
+    
+    const headers = ['Order ID', 'Service', 'Quantity', 'Cost (Coins)', 'Status', 'Date', 'Link']
+    const rows = orders.map(order => [
+      order.order_id,
+      order.service_name || 'Unknown',
+      order.quantity,
+      Number(order.cost_coins).toFixed(2),
+      order.status || 'Pending',
+      new Date(order.created_at).toLocaleString('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }),
+      order.link || 'N/A'
+    ])
+    
+    // Properly escape all fields
+    const csvContent = [
+      headers.map(h => escapeCSVField(h)).join(','),
+      ...rows.map(row => row.map(field => escapeCSVField(field)).join(','))
+    ].join('\n')
+    
+    const csv = BOM + csvContent
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const timestamp = new Date().toISOString().split('T')[0]
+    const filename = `all-orders-${timestamp}.csv`
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+    
+    toast.success(`All orders exported: ${filename}`)
+  }
+
   const exportToCSV = (report: MonthlyReport) => {
     const relevantOrders = orders.filter(order => {
       const date = new Date(order.created_at)
@@ -117,29 +182,48 @@ export default function ReportsPage() {
       return
     }
     
-    const headers = ['Order ID', 'Service', 'Quantity', 'Cost (Coins)', 'Status', 'Date']
+    // Add BOM for proper UTF-8 encoding in Excel
+    const BOM = '\uFEFF'
+    
+    const headers = ['Order ID', 'Service', 'Quantity', 'Cost (Coins)', 'Status', 'Date', 'Link']
     const rows = relevantOrders.map(order => [
       order.order_id,
       order.service_name || 'Unknown',
       order.quantity,
-      order.cost_coins,
+      Number(order.cost_coins).toFixed(2),
       order.status || 'Pending',
-      new Date(order.created_at).toLocaleDateString()
+      new Date(order.created_at).toLocaleString('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }),
+      order.link || 'N/A'
     ])
     
-    const csv = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
+    // Properly escape all fields
+    const csvContent = [
+      headers.map(h => escapeCSVField(h)).join(','),
+      ...rows.map(row => row.map(field => escapeCSVField(field)).join(','))
     ].join('\n')
     
-    const blob = new Blob([csv], { type: 'text/csv' })
+    const csv = BOM + csvContent
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = window.URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `report-${report.month.replace(' ', '-')}.csv`
+    const filename = `report-${report.month.replace(/\s+/g, '-')}.csv`
+    a.download = filename
+    document.body.appendChild(a)
     a.click()
+    document.body.removeChild(a)
     window.URL.revokeObjectURL(url)
-    toast.success('Report downloaded')
+    
+    toast.success(`Report downloaded: ${filename}`)
   }
 
   if (loading) {
@@ -155,6 +239,19 @@ export default function ReportsPage() {
   return (
     <PageLayout title="Reports">
       <div className="space-y-6">
+        {/* Export All Button */}
+        {orders.length > 0 && (
+          <div className="flex justify-end">
+            <button 
+              onClick={exportAllOrdersToCSV}
+              className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium shadow-sm"
+            >
+              <Download size={20} />
+              Export All Orders to CSV
+            </button>
+          </div>
+        )}
+
         {/* Summary Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100">

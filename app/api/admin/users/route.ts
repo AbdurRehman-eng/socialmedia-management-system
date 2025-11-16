@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession, getAllUsers, createUser } from '@/lib/auth'
+import { getSession, getAllUsersWithBalances, createUser } from '@/lib/auth'
 
-// Get all users (admin only)
+// Get all users with their balances (admin only)
 export async function GET() {
   try {
     const session = await getSession()
@@ -13,7 +13,7 @@ export async function GET() {
       )
     }
 
-    const users = await getAllUsers()
+    const users = await getAllUsersWithBalances()
     return NextResponse.json({ users })
   } catch (error) {
     console.error('Get users error:', error)

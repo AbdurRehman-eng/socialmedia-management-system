@@ -100,7 +100,7 @@ export default function MyOrdersPage() {
       const data = await response.json()
       const currentOrders = data.orders.map(mapDbOrder)
       
-      // Get order IDs to refresh
+      // Get order IDs to refresh (max 100 per API limit)
       let ids = orderIds
       if (!ids || ids.length === 0) {
         ids = currentOrders.map((order: Order) => order.orderId)
@@ -111,40 +111,66 @@ export default function MyOrdersPage() {
         return
       }
 
-      const statuses = await smmApi.getMultipleOrderStatus(ids)
-      const updatedOrders = [...currentOrders]
+      // Split into batches of 100 if needed
+      const batchSize = 100
+      let successCount = 0
+      let errorCount = 0
+      
+      for (let i = 0; i < ids.length; i += batchSize) {
+        const batchIds = ids.slice(i, i + batchSize)
+        
+        try {
+          const statuses = await smmApi.getMultipleOrderStatus(batchIds)
+          const updatedOrders = [...currentOrders]
 
-      await Promise.all(
-        Object.entries(statuses).map(async ([orderIdStr, status]) => {
-          const orderId = Number(orderIdStr)
-          if (status.error) {
-            console.error(`Order ${orderId} status error:`, status.error)
-            return
-          }
-          
-          // Update order status via API
-          await fetch(`/api/orders/${orderId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(status)
-          })
-          
-          const index = updatedOrders.findIndex((o) => o.orderId === orderId)
-          if (index !== -1) {
-            updatedOrders[index] = {
-              ...updatedOrders[index],
-              status: status.status || updatedOrders[index].status,
-              charge: status.charge,
-              start_count: status.start_count,
-              remains: status.remains,
-              currency: status.currency,
-            }
-          }
-        })
-      )
+          await Promise.all(
+            Object.entries(statuses).map(async ([orderIdStr, status]) => {
+              const orderId = Number(orderIdStr)
+              if (status.error) {
+                console.error(`Order ${orderId} status error:`, status.error)
+                errorCount++
+                return
+              }
+              
+              // Update order status via API
+              try {
+                await fetch(`/api/orders/${orderId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(status)
+                })
+                
+                const index = updatedOrders.findIndex((o) => o.orderId === orderId)
+                if (index !== -1) {
+                  updatedOrders[index] = {
+                    ...updatedOrders[index],
+                    status: status.status || updatedOrders[index].status,
+                    charge: status.charge,
+                    start_count: status.start_count,
+                    remains: status.remains,
+                    currency: status.currency,
+                  }
+                }
+                successCount++
+              } catch (updateError) {
+                console.error(`Failed to update order ${orderId}:`, updateError)
+                errorCount++
+              }
+            })
+          )
 
-      setOrders(updatedOrders)
-      toast.success("Order statuses refreshed")
+          setOrders(updatedOrders)
+        } catch (batchError) {
+          console.error(`Failed to fetch batch starting at ${i}:`, batchError)
+          errorCount += batchIds.length
+        }
+      }
+
+      if (successCount > 0) {
+        toast.success(`${successCount} order${successCount > 1 ? 's' : ''} updated successfully${errorCount > 0 ? ` (${errorCount} failed)` : ''}`)
+      } else {
+        toast.error("Failed to refresh order statuses")
+      }
     } catch (err) {
       console.error("Failed to refresh order statuses:", err)
       toast.error("Failed to refresh order statuses")
@@ -302,33 +328,79 @@ export default function MyOrdersPage() {
     }
   }
 
+  const handleCancelSingleOrder = async (orderId: number) => {
+    try {
+      const response = await smmApi.cancelOrders([orderId])
+      const result = response[0]
+      if (result && typeof result.cancel === "object" && "error" in result.cancel) {
+        toast.error(`Order ${orderId}: ${result.cancel.error}`)
+      } else {
+        toast.success(`Order ${orderId} has been canceled`)
+        await loadOrders(false)
+      }
+    } catch (err) {
+      console.error("Failed to cancel order:", err)
+      toast.error(`Failed to cancel order ${orderId}`)
+    }
+  }
+
+  const handleRefillSingleOrder = async (orderId: number) => {
+    try {
+      const response = await fetch('/api/refill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || `Failed to refill order ${orderId}`)
+        return
+      }
+
+      toast.success(`Refill created! Cost: ${data.cost} coins. New balance: ${data.newBalance} coins`)
+      await loadOrders(false)
+    } catch (err) {
+      console.error("Failed to refill order:", err)
+      toast.error(`Failed to refill order ${orderId}`)
+    }
+  }
+
   return (
     <PageLayout title="My Orders">
       <div className="space-y-4">
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
+        {/* Action Bar */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-green-100">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2 flex-wrap">
               <Button
                 onClick={() => refreshOrderStatuses()}
-                disabled={refreshing}
-                variant="outline"
-                size="sm"
+                disabled={refreshing || loading}
+                className="bg-green-600 hover:bg-green-700 text-white"
+                size="default"
               >
                 <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-                Refresh Statuses
+                {refreshing ? "Refreshing..." : "Refresh All Statuses"}
+                {orders.length > 0 && !refreshing && (
+                  <span className="ml-2 bg-white/20 px-2 py-0.5 rounded text-xs">
+                    {orders.length}
+                  </span>
+                )}
               </Button>
               <Button
                 onClick={() => loadOrders(false)}
                 variant="outline"
-                size="sm"
+                size="default"
+                disabled={loading}
               >
                 <RotateCcw className="w-4 h-4 mr-2" />
-                Reload Orders
+                Reload List
               </Button>
             </div>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button variant="outline">
                 <Plus className="w-4 h-4 mr-2" />
                 Add Order ID
               </Button>
@@ -363,6 +435,12 @@ export default function MyOrdersPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          </div>
+          {orders.length > 0 && (
+            <p className="text-xs text-gray-500 mt-2">
+              💡 Click "Refresh All Statuses" to get the latest status for all {orders.length} order{orders.length > 1 ? 's' : ''} from the provider
+            </p>
+          )}
         </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -435,7 +513,11 @@ export default function MyOrdersPage() {
           </div>
         ) : (
           <div className="bg-white rounded-2xl shadow-sm border border-green-100 overflow-hidden">
-            <OrdersTable orders={orders} />
+            <OrdersTable 
+              orders={orders} 
+              onCancelOrder={handleCancelSingleOrder}
+              onRefillOrder={handleRefillSingleOrder}
+            />
           </div>
         )}
       </div>

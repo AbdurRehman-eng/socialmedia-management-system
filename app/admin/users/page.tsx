@@ -30,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Plus, Trash2 } from "lucide-react"
+import { Loader2, Plus, Trash2, Coins } from "lucide-react"
 import { toast } from "sonner"
 import PageLayout from "@/components/page-layout"
 
@@ -40,6 +40,7 @@ interface User {
   username: string
   role: string
   isActive: boolean
+  balance: number
 }
 
 export default function AdminUsersPage() {
@@ -47,6 +48,10 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [allocateDialogOpen, setAllocateDialogOpen] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
+  const [allocateAmount, setAllocateAmount] = useState<string>("")
+  const [adminBalance, setAdminBalance] = useState<number>(0)
   const [newUser, setNewUser] = useState({
     email: "",
     username: "",
@@ -56,6 +61,7 @@ export default function AdminUsersPage() {
   useEffect(() => {
     checkAuth()
     loadUsers()
+    loadAdminBalance()
   }, [])
 
   const checkAuth = async () => {
@@ -168,6 +174,69 @@ export default function AdminUsersPage() {
     }
   }
 
+  const loadAdminBalance = async () => {
+    try {
+      const response = await fetch("/api/balance")
+      if (response.ok) {
+        const data = await response.json()
+        setAdminBalance(data.balance || 0)
+      }
+    } catch (error) {
+      console.error("Load admin balance error:", error)
+    }
+  }
+
+  const handleOpenAllocateDialog = (user: User) => {
+    setSelectedUser(user)
+    setAllocateAmount("")
+    setAllocateDialogOpen(true)
+  }
+
+  const handleAllocateCoins = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!selectedUser) return
+
+    const amount = parseFloat(allocateAmount)
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Please enter a valid amount")
+      return
+    }
+
+    if (amount > adminBalance) {
+      toast.error(`Insufficient balance. You have ₱${adminBalance.toFixed(2)} available`)
+      return
+    }
+
+    try {
+      const response = await fetch("/api/admin/allocate-coins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: selectedUser.id,
+          amount: amount,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || "Failed to allocate coins")
+        return
+      }
+
+      toast.success(`Successfully allocated ₱${amount.toFixed(2)} to ${selectedUser.username}`)
+      setAllocateDialogOpen(false)
+      setSelectedUser(null)
+      setAllocateAmount("")
+      loadUsers()
+      loadAdminBalance()
+    } catch (error) {
+      toast.error("An error occurred while allocating coins")
+      console.error("Allocate coins error:", error)
+    }
+  }
+
   if (loading) {
     return (
       <PageLayout title="User Management">
@@ -261,12 +330,22 @@ export default function AdminUsersPage() {
             </div>
           </CardHeader>
           <CardContent>
+            <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+              <p className="text-sm font-medium text-slate-900">
+                Your Balance: <span className="text-green-600 font-bold">₱{adminBalance.toFixed(2)}</span>
+              </p>
+              <p className="text-xs text-gray-600 mt-1">
+                This is the amount you can allocate to users or use for orders
+              </p>
+            </div>
+
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Username</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead>Balance</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -282,6 +361,11 @@ export default function AdminUsersPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
+                      <span className="font-semibold text-green-600">
+                        ₱{user.balance.toFixed(2)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
                       <Badge
                         variant={user.isActive ? "default" : "destructive"}
                         className={user.isActive ? "bg-green-600" : ""}
@@ -292,6 +376,15 @@ export default function AdminUsersPage() {
                     <TableCell className="text-right space-x-2">
                       {user.role !== "admin" && (
                         <>
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="bg-green-600 hover:bg-green-700"
+                            onClick={() => handleOpenAllocateDialog(user)}
+                          >
+                            <Coins className="w-4 h-4 mr-1" />
+                            Allocate
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
@@ -315,6 +408,71 @@ export default function AdminUsersPage() {
             </Table>
           </CardContent>
         </Card>
+
+        {/* Allocate Coins Dialog */}
+        <Dialog open={allocateDialogOpen} onOpenChange={setAllocateDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Allocate Coins to {selectedUser?.username}</DialogTitle>
+              <DialogDescription>
+                Transfer coins from your balance to this user. This amount will be deducted from your balance.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleAllocateCoins} className="space-y-4">
+              <div className="space-y-2">
+                <Label>User Current Balance</Label>
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <span className="font-bold text-green-600">
+                    ₱{selectedUser?.balance.toFixed(2) || "0.00"}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Your Available Balance</Label>
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <span className="font-bold text-green-600">
+                    ₱{adminBalance.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="amount">Amount to Allocate (₱)</Label>
+                <Input
+                  id="amount"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={adminBalance}
+                  placeholder="Enter amount"
+                  value={allocateAmount}
+                  onChange={(e) => setAllocateAmount(e.target.value)}
+                  required
+                />
+                <p className="text-xs text-gray-500">
+                  After transfer: You'll have ₱{(adminBalance - (parseFloat(allocateAmount) || 0)).toFixed(2)} | 
+                  User will have ₱{((selectedUser?.balance || 0) + (parseFloat(allocateAmount) || 0)).toFixed(2)}
+                </p>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setAllocateDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  className="bg-green-600 hover:bg-green-700"
+                  disabled={!allocateAmount || parseFloat(allocateAmount) <= 0 || parseFloat(allocateAmount) > adminBalance}
+                >
+                  <Coins className="w-4 h-4 mr-2" />
+                  Allocate Coins
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
     </PageLayout>
   )
 }

@@ -129,6 +129,31 @@ export async function deductCoins(amount: number, userId?: string): Promise<bool
   return true
 }
 
+/**
+ * Transfer coins from one user to another
+ * @param fromUserId - The user sending coins (usually admin)
+ * @param toUserId - The user receiving coins
+ * @param amount - The amount to transfer
+ * @returns true if successful, false if insufficient balance
+ */
+export async function transferCoins(fromUserId: string, toUserId: string, amount: number): Promise<boolean> {
+  // Get sender's balance
+  const senderBalance = await getCoinBalance(fromUserId)
+  
+  if (senderBalance < amount) {
+    return false
+  }
+  
+  // Get receiver's current balance
+  const receiverBalance = await getCoinBalance(toUserId)
+  
+  // Perform transfer
+  await setCoinBalance(senderBalance - amount, fromUserId)
+  await setCoinBalance(receiverBalance + amount, toUserId)
+  
+  return true
+}
+
 // ==================== SETTINGS ====================
 
 export async function getSetting(key: string, defaultValue: string): Promise<string> {
@@ -182,8 +207,8 @@ export async function setSetting(key: string, value: string): Promise<void> {
 }
 
 export async function getDefaultMarkup(): Promise<number> {
-  const value = await getSetting('default_markup', '1.2')
-  return Number(value) || 1.2
+  const value = await getSetting('default_markup', '1.5')
+  return Number(value) || 1.5
 }
 
 export async function setDefaultMarkup(markup: number): Promise<void> {
@@ -319,6 +344,24 @@ export async function getOrders(userId?: string): Promise<Order[]> {
 export async function getOrderIds(userId?: string): Promise<number[]> {
   const orders = await getOrders(userId)
   return orders.map((o) => o.order_id)
+}
+
+export async function getOrderByOrderId(orderId: number, userId?: string): Promise<Order | null> {
+  const uid = userId || await getDefaultUserId()
+  
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*')
+    .eq('order_id', orderId)
+    .eq('user_id', uid)
+    .single()
+  
+  if (error) {
+    debugLog('Error getting order:', error)
+    return null
+  }
+  
+  return data
 }
 
 export async function createOrder(orderData: {

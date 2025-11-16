@@ -15,7 +15,7 @@ import {
   setCoinToUsdRate,
   type PricingRule,
 } from "@/lib/coins"
-import { Loader2, Save, Trash2, DollarSign, Settings } from "lucide-react"
+import { Loader2, Save, Trash2, DollarSign, Settings, RefreshCw, Wallet, TrendingUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
@@ -27,10 +27,15 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [pricingRules, setPricingRules] = useState<Record<number, PricingRule>>({})
-  const [defaultMarkup, setDefaultMarkupState] = useState(getDefaultMarkup())
-  const [coinToUsdRate, setCoinToUsdRateState] = useState(getCoinToUsdRate())
+  const [defaultMarkup, setDefaultMarkupState] = useState<number>(1.5)
+  const [coinToUsdRate, setCoinToUsdRateState] = useState<number>(1)
   const [editingService, setEditingService] = useState<number | null>(null)
   const [editForm, setEditForm] = useState({ markup: "", customPrice: "" })
+  const [providerBalance, setProviderBalance] = useState<{ amount: number; currency: string } | null>(null)
+  const [adminCoins, setAdminCoins] = useState<number>(0)
+  const [syncing, setSyncing] = useState(false)
+  const [balanceLoading, setBalanceLoading] = useState(true)
+  const [usdToPhpRate, setUsdToPhpRate] = useState<number>(50)
 
   // Check authentication
   useEffect(() => {
@@ -45,7 +50,8 @@ export default function AdminPage() {
         setLoading(true)
         const data = await smmApi.getServices()
         setServices(data)
-        setPricingRules(getPricingRules())
+        const rules = await getPricingRules()
+        setPricingRules(rules)
       } catch (err) {
         console.error("Failed to fetch services:", err)
         toast.error("Failed to load services")
@@ -54,29 +60,130 @@ export default function AdminPage() {
       }
     }
 
+    async function loadAdminBalance() {
+      try {
+        setBalanceLoading(true)
+        const response = await fetch("/api/balance")
+        if (response.ok) {
+          const data = await response.json()
+          setAdminCoins(data.balance || 0)
+        }
+      } catch (error) {
+        console.error("Failed to load admin balance:", error)
+      } finally {
+        setBalanceLoading(false)
+      }
+    }
+
+    async function loadUsdToPhpRate() {
+      try {
+        const response = await fetch("/api/admin/settings/usd-to-php-rate")
+        if (response.ok) {
+          const data = await response.json()
+          setUsdToPhpRate(data.rate || 50)
+        }
+      } catch (error) {
+        console.error("Failed to load USD to PHP rate:", error)
+      }
+    }
+
+    async function loadGlobalSettings() {
+      try {
+        const markup = await getDefaultMarkup()
+        setDefaultMarkupState(markup)
+        
+        const rate = await getCoinToUsdRate()
+        setCoinToUsdRateState(rate)
+      } catch (error) {
+        console.error("Failed to load global settings:", error)
+      }
+    }
+
     if (user && user.role === 'admin') {
       fetchServices()
+      loadAdminBalance()
+      loadUsdToPhpRate()
+      loadGlobalSettings()
     }
   }, [user])
 
-  const handleSaveDefaultMarkup = () => {
+  const handleSyncProviderBalance = async () => {
+    try {
+      setSyncing(true)
+      const response = await fetch("/api/admin/sync-provider-balance")
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || "Failed to sync provider balance")
+        return
+      }
+
+      setProviderBalance(data.providerBalance)
+      setAdminCoins(data.adminCoins)
+      setUsdToPhpRate(data.conversionRate) // Update the displayed rate
+      toast.success(data.message || "Balance synced successfully!")
+    } catch (error) {
+      console.error("Sync error:", error)
+      toast.error("Failed to sync provider balance")
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleSaveDefaultMarkup = async () => {
     const markup = Number(defaultMarkup)
     if (isNaN(markup) || markup <= 0) {
       toast.error("Markup must be a positive number")
       return
     }
-    setDefaultMarkup(markup)
-    toast.success("Default markup saved!")
+    try {
+      await setDefaultMarkup(markup)
+      toast.success("Default markup saved!")
+    } catch (error) {
+      console.error("Error saving markup:", error)
+      toast.error("Failed to save default markup")
+    }
   }
 
-  const handleSaveCoinRate = () => {
+  const handleSaveCoinRate = async () => {
     const rate = Number(coinToUsdRate)
     if (isNaN(rate) || rate <= 0) {
       toast.error("Rate must be a positive number")
       return
     }
-    setCoinToUsdRate(rate)
-    toast.success("Coin to PHP rate saved!")
+    try {
+      await setCoinToUsdRate(rate)
+      toast.success("Coin to PHP rate saved!")
+    } catch (error) {
+      console.error("Error saving coin rate:", error)
+      toast.error("Failed to save coin to PHP rate")
+    }
+  }
+
+  const handleSaveUsdToPhpRate = async () => {
+    const rate = Number(usdToPhpRate)
+    if (isNaN(rate) || rate <= 0) {
+      toast.error("Rate must be a positive number")
+      return
+    }
+
+    try {
+      const response = await fetch("/api/admin/settings/usd-to-php-rate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rate }),
+      })
+
+      if (!response.ok) {
+        toast.error("Failed to save USD to PHP rate")
+        return
+      }
+
+      toast.success("USD to PHP rate saved!")
+    } catch (error) {
+      console.error("Error saving USD to PHP rate:", error)
+      toast.error("Failed to save USD to PHP rate")
+    }
   }
 
   const handleEditService = (service: Service) => {
@@ -88,7 +195,7 @@ export default function AdminPage() {
     })
   }
 
-  const handleSaveServicePricing = (serviceId: number) => {
+  const handleSaveServicePricing = async (serviceId: number) => {
     const rule: PricingRule = {
       serviceId,
     }
@@ -112,17 +219,29 @@ export default function AdminPage() {
       return
     }
 
-    setPricingRule(serviceId, rule)
-    setPricingRules({ ...getPricingRules() })
-    setEditingService(null)
-    setEditForm({ markup: "", customPrice: "" })
-    toast.success("Pricing rule saved!")
+    try {
+      await setPricingRule(serviceId, rule)
+      const updatedRules = await getPricingRules()
+      setPricingRules(updatedRules)
+      setEditingService(null)
+      setEditForm({ markup: "", customPrice: "" })
+      toast.success("Pricing rule saved!")
+    } catch (error) {
+      console.error("Error saving pricing rule:", error)
+      toast.error("Failed to save pricing rule")
+    }
   }
 
-  const handleDeleteServicePricing = (serviceId: number) => {
-    deletePricingRule(serviceId)
-    setPricingRules({ ...getPricingRules() })
-    toast.success("Pricing rule deleted!")
+  const handleDeleteServicePricing = async (serviceId: number) => {
+    try {
+      await deletePricingRule(serviceId)
+      const updatedRules = await getPricingRules()
+      setPricingRules(updatedRules)
+      toast.success("Pricing rule deleted!")
+    } catch (error) {
+      console.error("Error deleting pricing rule:", error)
+      toast.error("Failed to delete pricing rule")
+    }
   }
 
   const filteredServices = services.filter(
@@ -148,6 +267,83 @@ export default function AdminPage() {
   return (
     <PageLayout title="Pricing Management">
       <div className="space-y-6">
+        {/* Provider Balance & Admin Coins */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Provider Balance */}
+          <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Wallet size={24} />
+                <h3 className="font-semibold">Provider Balance</h3>
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleSyncProviderBalance}
+                disabled={syncing}
+                className="bg-white/20 hover:bg-white/30 text-white border-0"
+              >
+                {syncing ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+              </Button>
+            </div>
+            {providerBalance ? (
+              <>
+                <p className="text-3xl font-bold">
+                  {providerBalance.currency} ${providerBalance.amount.toFixed(2)}
+                </p>
+                <p className="text-sm text-blue-100 mt-1">Real balance from SMM provider</p>
+              </>
+            ) : (
+              <p className="text-sm text-blue-100">Click sync to load</p>
+            )}
+          </div>
+
+          {/* Admin Allocatable Coins */}
+          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-2xl p-6 text-white shadow-lg">
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp size={24} />
+              <h3 className="font-semibold">Your Allocatable Coins</h3>
+            </div>
+            {balanceLoading ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : (
+              <>
+                <p className="text-3xl font-bold">₱{adminCoins.toFixed(2)}</p>
+                <p className="text-sm text-green-100 mt-1">Available to allocate to users</p>
+              </>
+            )}
+          </div>
+
+          {/* Conversion Info */}
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200">
+            <div className="flex items-center gap-2 mb-4">
+              <DollarSign size={24} className="text-gray-600" />
+              <h3 className="font-semibold text-slate-900">Conversion Rate</h3>
+            </div>
+            <p className="text-gray-600 text-sm mb-2">
+              1 USD = {usdToPhpRate} PHP
+            </p>
+            {providerBalance && (
+              <p className="text-xs text-gray-500">
+                ${providerBalance.amount.toFixed(2)} × {usdToPhpRate} = ₱{adminCoins.toFixed(2)} coins
+              </p>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSyncProviderBalance}
+              disabled={syncing}
+              className="mt-3 w-full"
+            >
+              {syncing ? "Syncing..." : "Sync from Provider"}
+            </Button>
+          </div>
+        </div>
+
         {/* Global Settings */}
         <div className="bg-white rounded-2xl p-6 shadow-sm border border-green-100">
           <div className="flex items-center gap-3 mb-6">
@@ -155,7 +351,7 @@ export default function AdminPage() {
             <h2 className="text-xl font-bold text-slate-900">Global Settings</h2>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-2">
                 Default Markup (Multiplier)
@@ -194,6 +390,28 @@ export default function AdminPage() {
                   className="flex-1"
                 />
                 <Button onClick={handleSaveCoinRate}>
+                  <Save size={16} className="mr-2" />
+                  Save
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">
+                USD to PHP Rate
+              </label>
+              <p className="text-xs text-gray-500 mb-2">
+                Provider balance conversion. Example: 50 = $1 USD = ₱50
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={usdToPhpRate}
+                  onChange={(e) => setUsdToPhpRate(Number(e.target.value))}
+                  className="flex-1"
+                />
+                <Button onClick={handleSaveUsdToPhpRate}>
                   <Save size={16} className="mr-2" />
                   Save
                 </Button>
