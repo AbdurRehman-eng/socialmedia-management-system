@@ -224,6 +224,15 @@ export async function setCoinToUsdRate(rate: number): Promise<void> {
   await setSetting('coin_to_usd_rate', String(rate))
 }
 
+export async function getUsdToPhpRate(): Promise<number> {
+  const value = await getSetting('usd_to_php_rate', '50')
+  return Number(value) || 50
+}
+
+export async function setUsdToPhpRate(rate: number): Promise<void> {
+  await setSetting('usd_to_php_rate', String(rate))
+}
+
 // ==================== PRICING RULES ====================
 
 export async function getPricingRules(): Promise<Record<number, PricingRule>> {

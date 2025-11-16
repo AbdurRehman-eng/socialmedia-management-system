@@ -45,17 +45,20 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
         setServices(data)
         
         // Calculate prices for all services efficiently
-        // Fetch pricing data once instead of for each service
-        const prices: Record<number, number> = {}
-        
-        // Use a simple fallback calculation instead of fetching from DB for each service
-        // This will be accurate enough for display purposes
+        // Fetch USD to PHP rate and default markup
+        const usdToPhpResponse = await fetch('/api/admin/settings/usd-to-php-rate')
+        const usdToPhpData = await usdToPhpResponse.json()
+        const usdToPhpRate = usdToPhpData.rate || 50
         const defaultMarkup = 1.5 // 50% markup
         
+        const prices: Record<number, number> = {}
+        
         data.forEach((service) => {
-          const providerRate = Number(service.rate)
+          const providerRateInUsd = Number(service.rate)
+          // Convert USD to PHP first, then apply markup
+          const providerRateInPhp = providerRateInUsd * usdToPhpRate
           // Calculate with default markup (prices will be recalculated accurately on order submit)
-          prices[service.service] = providerRate * defaultMarkup
+          prices[service.service] = providerRateInPhp * defaultMarkup
         })
         
         setServicePrices(prices)

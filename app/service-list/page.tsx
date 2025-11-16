@@ -31,12 +31,17 @@ export default function ServiceListPage() {
         setError(null)
 
         // Calculate prices for all services efficiently
-        // Use default markup to avoid multiple DB calls
+        // Fetch USD to PHP rate and default markup
+        const usdToPhpResponse = await fetch('/api/admin/settings/usd-to-php-rate')
+        const usdToPhpData = await usdToPhpResponse.json()
+        const usdToPhpRate = usdToPhpData.rate || 50
         const defaultMarkup = 1.5 // 50% markup
         
         const servicesWithCalculatedPrices: ServiceWithPrice[] = data.map((service) => {
-          const providerRate = Number(service.rate)
-          const coinPrice = providerRate * defaultMarkup
+          const providerRateInUsd = Number(service.rate)
+          // Convert USD to PHP first, then apply markup
+          const providerRateInPhp = providerRateInUsd * usdToPhpRate
+          const coinPrice = providerRateInPhp * defaultMarkup
           return { 
             ...service, 
             coinPrice, 

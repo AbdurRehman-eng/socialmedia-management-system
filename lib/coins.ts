@@ -198,30 +198,38 @@ export async function deletePricingRule(serviceId: number): Promise<void> {
 
 /**
  * Calculate coin price for a service
- * @param providerRatePer1000 - The price from the provider per 1000 units (in PHP)
+ * @param providerRateInUsdPer1000 - The price from the provider per 1000 units (in USD)
  * @param serviceId - The service ID
  * @returns The price in coins per 1000 units that the client should pay
  * 
  * PRICING FORMULA:
- * - Provider rate is already per 1000 units (standard in SMM panels)
- * - Your price = Provider rate × markup (default 1.5 = 50% markup)
- * - Example: Provider = ₱10/1000 → Your price = ₱10 × 1.5 = ₱15/1000
+ * 1. Convert USD to PHP: providerRateInPHP = providerRateInUSD × usdToPhpRate
+ * 2. Apply markup: yourPrice = providerRateInPHP × markup (default 1.5 = 50% markup)
+ * 3. Convert to coins: finalCoins = yourPrice × coinRate (default 1 coin = 1 PHP)
+ * 
+ * Example: Provider = $1.00/1000, USD→PHP rate = 50, markup = 1.5
+ *   → PHP price = $1.00 × 50 = ₱50
+ *   → Your price = ₱50 × 1.5 = ₱75/1000
  */
-export async function calculateCoinPrice(providerRatePer1000: number, serviceId: number): Promise<number> {
+export async function calculateCoinPrice(providerRateInUsdPer1000: number, serviceId: number): Promise<number> {
   const rule = await getPricingRule(serviceId)
   const defaultMarkup = await getDefaultMarkup()
+  const usdToPhpRate = await db.getUsdToPhpRate()
+  
+  // First convert USD to PHP
+  const providerRateInPhp = providerRateInUsdPer1000 * usdToPhpRate
   
   let finalPhpPrice: number
   
   if (rule?.customPrice !== undefined) {
-    // Use custom fixed price (already per 1000)
+    // Use custom fixed price (already per 1000 in PHP)
     return rule.customPrice
   } else if (rule?.markup) {
     // Use service-specific markup
-    finalPhpPrice = providerRatePer1000 * rule.markup
+    finalPhpPrice = providerRateInPhp * rule.markup
   } else {
     // Use default markup (1.5 = 50% markup)
-    finalPhpPrice = providerRatePer1000 * defaultMarkup
+    finalPhpPrice = providerRateInPhp * defaultMarkup
   }
   
   // Convert PHP to coins (1 coin = 1 PHP by default)
@@ -230,18 +238,18 @@ export async function calculateCoinPrice(providerRatePer1000: number, serviceId:
 
 /**
  * Calculate total coin cost for an order
- * @param providerRatePer1000 - The provider's rate per 1000 units (in PHP)
+ * @param providerRateInUsdPer1000 - The provider's rate per 1000 units (in USD)
  * @param quantity - The quantity to order
  * @param serviceId - The service ID
  * @returns The total cost in coins for the order
  * 
  * CALCULATION:
- * 1. Get your price per 1000 units (provider rate × markup)
+ * 1. Convert provider USD rate to PHP and apply markup to get your price per 1000 units
  * 2. Calculate cost: (your_price_per_1000 / 1000) × quantity
  * 3. Or: (your_price_per_1000 × quantity) / 1000
  */
-export async function calculateOrderCost(providerRatePer1000: number, quantity: number, serviceId: number): Promise<number> {
-  const yourPricePer1000 = await calculateCoinPrice(providerRatePer1000, serviceId)
+export async function calculateOrderCost(providerRateInUsdPer1000: number, quantity: number, serviceId: number): Promise<number> {
+  const yourPricePer1000 = await calculateCoinPrice(providerRateInUsdPer1000, serviceId)
   // Calculate cost: (price per 1000 / 1000) × quantity = price per unit × quantity
   const pricePerUnit = yourPricePer1000 / 1000
   return pricePerUnit * quantity
