@@ -53,6 +53,16 @@ export interface CancelResponse {
 class SMMApiClient {
   private async makeRequest(params: Record<string, string | number>): Promise<any> {
     try {
+      console.log('[SMMApiClient] Making request with params:', params)
+      console.log('[SMMApiClient] Params breakdown:', {
+        action: params.action,
+        service: params.service,
+        link: params.link,
+        quantity: params.quantity,
+        quantityType: typeof params.quantity,
+        quantityValue: params.quantity
+      })
+      
       const response = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
@@ -60,13 +70,40 @@ class SMMApiClient {
       })
 
       if (!response.ok) {
+        console.error('[SMMApiClient] HTTP error! status:', response.status)
         throw new Error(`HTTP error! status: ${response.status}`)
       }
 
       const data = await response.json()
+      console.log('[SMMApiClient] Response data:', data)
+      
+      // Check if provider returned an error
+      if (data && data.error) {
+        console.error('[SMMApiClient] ❌ PROVIDER ERROR DETECTED ❌')
+        console.error('[SMMApiClient] Error message:', data.error)
+        console.error('[SMMApiClient] Request that caused error:', {
+          action: params.action,
+          service: params.service,
+          quantity: params.quantity,
+          quantityType: typeof params.quantity
+        })
+        
+        // Enhanced debugging for quantity errors
+        if (data.error.toLowerCase().includes('quantity') || data.error.toLowerCase().includes('minimal')) {
+          console.error('[SMMApiClient] 🔍 QUANTITY ERROR ANALYSIS:')
+          console.error('  - Quantity sent:', params.quantity, `(type: ${typeof params.quantity})`)
+          console.error('  - Service ID:', params.service)
+          console.error('  - Error message:', data.error)
+          console.error('  - Full request params:', JSON.stringify(params, null, 2))
+          console.error('  - Full response:', JSON.stringify(data, null, 2))
+        }
+        
+        throw new Error(`Provider error: ${data.error}`)
+      }
+      
       return data
     } catch (error) {
-      console.error("API request failed:", error)
+      console.error('[SMMApiClient] API request failed:', error)
       throw error
     }
   }

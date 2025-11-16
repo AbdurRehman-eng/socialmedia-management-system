@@ -28,25 +28,22 @@ export default function ServiceListPage() {
       try {
         setLoading(true)
         const data = await smmApi.getServices()
-        const servicesWithPrices: ServiceWithPrice[] = data.map(s => ({
-          ...s,
-          priceLoading: true
-        }))
-        setServices(servicesWithPrices)
         setError(null)
 
-        // Calculate prices for all services
-        const servicesWithCalculatedPrices = await Promise.all(
-          servicesWithPrices.map(async (service) => {
-            try {
-              const coinPrice = await calculateCoinPrice(Number(service.rate), service.service)
-              return { ...service, coinPrice, priceLoading: false }
-            } catch (err) {
-              console.error(`Error calculating price for service ${service.service}:`, err)
-              return { ...service, priceLoading: false }
-            }
-          })
-        )
+        // Calculate prices for all services efficiently
+        // Use default markup to avoid multiple DB calls
+        const defaultMarkup = 1.5 // 50% markup
+        
+        const servicesWithCalculatedPrices: ServiceWithPrice[] = data.map((service) => {
+          const providerRate = Number(service.rate)
+          const coinPrice = providerRate * defaultMarkup
+          return { 
+            ...service, 
+            coinPrice, 
+            priceLoading: false 
+          }
+        })
+        
         setServices(servicesWithCalculatedPrices)
       } catch (err) {
         console.error("Failed to fetch services:", err)
@@ -242,12 +239,15 @@ export default function ServiceListPage() {
                   <div className="mb-4 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Min:</span>
-                      <span className="font-semibold text-slate-900">{service.min}</span>
+                      <span className="font-semibold text-slate-900">{service.min}+</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Max:</span>
                       <span className="font-semibold text-slate-900">{service.max}</span>
                     </div>
+                    <p className="text-xs text-amber-600 mt-2">
+                      ⚠️ Minimum may require qty &gt; {service.min}
+                    </p>
                     <div className="flex items-center gap-2 pt-2">
                       {service.refill && (
                         <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">Refill Available</span>

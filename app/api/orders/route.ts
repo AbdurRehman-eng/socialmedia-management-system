@@ -26,14 +26,53 @@ export async function POST(request: NextRequest) {
     const userId = await getCurrentUserIdFromCookies()
     console.log('[API /api/orders POST] Creating order for user:', userId)
     const body = await request.json()
+    console.log('[API /api/orders POST] Request body:', JSON.stringify(body, null, 2))
+    
     const { orderId, serviceId, serviceName, link, quantity, costCoins } = body
 
-    if (!orderId || !serviceId === undefined || !link || !quantity || !costCoins === undefined) {
+    // Detailed field validation with logging
+    const missingFields: string[] = []
+    if (!orderId && orderId !== 0) {
+      missingFields.push('orderId')
+      console.log('[API /api/orders POST] Missing: orderId')
+    }
+    if (serviceId === undefined || serviceId === null) {
+      missingFields.push('serviceId')
+      console.log('[API /api/orders POST] Missing: serviceId')
+    }
+    if (!link) {
+      missingFields.push('link')
+      console.log('[API /api/orders POST] Missing: link')
+    }
+    if (!quantity && quantity !== 0) {
+      missingFields.push('quantity')
+      console.log('[API /api/orders POST] Missing: quantity')
+    }
+    if (costCoins === undefined || costCoins === null) {
+      missingFields.push('costCoins')
+      console.log('[API /api/orders POST] Missing: costCoins')
+    }
+
+    if (missingFields.length > 0) {
+      console.log('[API /api/orders POST] Validation failed. Missing fields:', missingFields)
       return NextResponse.json(
-        { error: 'Missing required fields' },
+        { 
+          error: 'Missing required fields',
+          missingFields: missingFields,
+          receivedData: {
+            orderId,
+            serviceId,
+            serviceName,
+            link,
+            quantity,
+            costCoins
+          }
+        },
         { status: 400 }
       )
     }
+
+    console.log('[API /api/orders POST] All fields validated. Creating order...')
 
     const order = await db.createOrder({
       orderId,
@@ -45,13 +84,13 @@ export async function POST(request: NextRequest) {
       userId
     })
     
-    console.log('[API /api/orders POST] Order created:', order.id, 'for user:', userId)
+    console.log('[API /api/orders POST] Order created successfully:', order.id, 'for user:', userId)
 
     return NextResponse.json({ order })
   } catch (error) {
-    console.error('Create order error:', error)
+    console.error('[API /api/orders POST] Error creating order:', error)
     return NextResponse.json(
-      { error: 'Failed to create order' },
+      { error: 'Failed to create order', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }
