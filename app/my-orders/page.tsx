@@ -443,60 +443,59 @@ export default function MyOrdersPage() {
           )}
         </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white border border-green-100 rounded-2xl p-4 shadow-sm space-y-3">
-              <div className="flex items-center gap-2">
-                <Search className="w-4 h-4 text-green-600" />
-                <h3 className="font-semibold text-slate-900 text-sm">Check Order Status</h3>
-              </div>
-              <Input
-                type="number"
-                placeholder="Order ID"
-                value={statusInput}
-                onChange={(e) => setStatusInput(e.target.value)}
-              />
-              <Button onClick={handleCheckStatus} disabled={statusLoading}>
-                {statusLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Check Status"}
-              </Button>
-              {statusResult && (
-                <div className="text-xs text-gray-600 space-y-1 border-t border-gray-100 pt-2">
-                  <p>Status: <span className="font-semibold text-slate-900">{statusResult.status || "Unknown"}</span></p>
-                  {statusResult.charge && <p>Charge: {statusResult.charge} {statusResult.currency || ""}</p>}
-                  {statusResult.remains && <p>Remains: {statusResult.remains}</p>}
-                </div>
-              )}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white border border-green-100 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <Search className="w-4 h-4 text-green-600" />
+              <h3 className="font-semibold text-slate-900 text-sm">Check Order Status</h3>
             </div>
+            <Input
+              type="number"
+              placeholder="Order ID"
+              value={statusInput}
+              onChange={(e) => setStatusInput(e.target.value)}
+            />
+            <Button onClick={handleCheckStatus} disabled={statusLoading}>
+              {statusLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Check Status"}
+            </Button>
+            {statusResult && (
+              <div className="text-xs text-gray-600 space-y-1 border-t border-gray-100 pt-2">
+                <p>Status: <span className="font-semibold text-slate-900">{statusResult.status || "Unknown"}</span></p>
+                {statusResult.charge && <p>Charge: {statusResult.charge} {statusResult.currency || ""}</p>}
+                {statusResult.remains && <p>Remains: {statusResult.remains}</p>}
+              </div>
+            )}
+          </div>
 
-            <div className="bg-white border border-green-100 rounded-2xl p-4 shadow-sm space-y-3">
-              <div className="flex items-center gap-2">
-                <RefreshCw className="w-4 h-4 text-green-600" />
-                <h3 className="font-semibold text-slate-900 text-sm">Create Refill</h3>
-              </div>
-              <Input
-                type="number"
-                placeholder="Order ID"
-                value={refillInput}
-                onChange={(e) => setRefillInput(e.target.value)}
-              />
-              <Button onClick={handleCreateRefill} disabled={refillLoading}>
-                {refillLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Request Refill"}
-              </Button>
+          <div className="bg-white border border-green-100 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-green-600" />
+              <h3 className="font-semibold text-slate-900 text-sm">Create Refill</h3>
             </div>
+            <Input
+              type="number"
+              placeholder="Order ID"
+              value={refillInput}
+              onChange={(e) => setRefillInput(e.target.value)}
+            />
+            <Button onClick={handleCreateRefill} disabled={refillLoading}>
+              {refillLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Request Refill"}
+            </Button>
+          </div>
 
-            <div className="bg-white border border-green-100 rounded-2xl p-4 shadow-sm space-y-3">
-              <div className="flex items-center gap-2">
-                <Ban className="w-4 h-4 text-red-600" />
-                <h3 className="font-semibold text-slate-900 text-sm">Cancel Orders</h3>
-              </div>
-              <Input
-                placeholder="Order IDs (comma separated)"
-                value={cancelInput}
-                onChange={(e) => setCancelInput(e.target.value)}
-              />
-              <Button onClick={handleCancelOrder} disabled={cancelLoading} variant="destructive">
-                {cancelLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cancel Orders"}
-              </Button>
+          <div className="bg-white border border-green-100 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <Ban className="w-4 h-4 text-red-600" />
+              <h3 className="font-semibold text-slate-900 text-sm">Cancel Orders</h3>
             </div>
+            <Input
+              placeholder="Order IDs (comma separated)"
+              value={cancelInput}
+              onChange={(e) => setCancelInput(e.target.value)}
+            />
+            <Button onClick={handleCancelOrder} disabled={cancelLoading} variant="destructive">
+              {cancelLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cancel Orders"}
+            </Button>
           </div>
         </div>
 
