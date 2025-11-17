@@ -1,6 +1,7 @@
 import { RotateCcw, X } from "lucide-react"
 import { Button } from "./ui/button"
 import { useState } from "react"
+import { formatCoins } from "@/lib/coins"
 
 interface Order {
   id: string
@@ -93,7 +94,9 @@ export default function OrdersTable({ orders, onCancelOrder, onRefillOrder }: Or
                     {order.link || 'N/A'}
                   </a>
                 </td>
-                <td className="py-3 px-4 text-slate-900 text-sm">{order.charge || '0'}</td>
+                <td className="py-3 px-4 text-slate-900 text-sm">
+                  {order.charge ? formatCoins(Number(order.charge)) : formatCoins(0)}
+                </td>
                 <td className="py-3 px-4 text-slate-900 text-sm">{order.start_count || '0'}</td>
                 <td className="py-3 px-4 text-slate-900 text-sm font-medium">{order.quantity}</td>
                 <td className="py-3 px-4 text-slate-700 text-xs max-w-sm">
@@ -188,7 +191,7 @@ export default function OrdersTable({ orders, onCancelOrder, onRefillOrder }: Or
             <div className="text-xs text-slate-700 space-y-1">
               <p className="truncate"><span className="font-medium">Service:</span> {order.service}</p>
               <p><span className="font-medium">Quantity:</span> {order.quantity}</p>
-              <p><span className="font-medium">Charge:</span> {order.charge || '0'}</p>
+              <p><span className="font-medium">Charge:</span> {order.charge ? formatCoins(Number(order.charge)) : formatCoins(0)}</p>
               <p><span className="font-medium">Start count:</span> {order.start_count || '0'}</p>
               <p><span className="font-medium">Remains:</span> {order.remains || '0'}</p>
             </div>

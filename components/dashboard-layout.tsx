@@ -37,7 +37,9 @@ function mapDbOrder(order: any): Order {
     status: order.status || "Pending",
     date: formattedDate,
     link: order.link || "N/A",
-    charge: order.charge || order.cost_coins || "0",
+    // Use cost_coins (total charge in PHP with markup) as the primary charge value
+    // cost_coins = (price per unit in PHP with markup) × quantity
+    charge: order.cost_coins || order.charge || "0",
     start_count: order.start_count || "0",
     remains: order.remains || "0",
     currency: order.currency || undefined,

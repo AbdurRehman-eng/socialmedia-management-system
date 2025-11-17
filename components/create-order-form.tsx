@@ -108,10 +108,11 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
       // Step 1: Convert to PHP: USD per unit × USD to PHP rate = PHP per unit
       const ratePerUnitInPhp = ratePerUnit * usdToPhpRate
       
-      // Step 2: Apply markup: PHP per unit × markup = final price per unit
+      // Step 2: Apply markup: PHP per unit × markup = final price per unit in PHP (with markup)
       const finalRatePerUnitInPhp = ratePerUnitInPhp * defaultMarkup
       
-      // Step 3: Calculate cost: final PHP per unit × quantity
+      // Step 3: Calculate total charge: (price per unit in PHP with markup) × quantity
+      // This is the actual price the customer pays
       const cost = finalRatePerUnitInPhp * quantity
       setCost(cost)
     }
@@ -200,13 +201,14 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
       }
       
       // Save order to Supabase via API
+      // costCoins is the total charge in PHP: (price per unit in PHP with markup) × quantity
       const orderData = {
         orderId: response.order,
         serviceId: selectedService.service,
         serviceName: selectedService.name,
         link: formData.link,
         quantity: quantity,
-        costCoins: cost,
+        costCoins: cost, // Total charge in PHP (with markup, multiplied by quantity)
       }
       
       console.log('[CreateOrderForm] Saving order to database:', orderData)
