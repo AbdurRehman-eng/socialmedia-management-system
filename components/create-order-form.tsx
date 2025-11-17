@@ -2,15 +2,18 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { smmApi, type Service } from "@/lib/api"
 import { useSearchParams } from "next/navigation"
-import { Loader2 } from "lucide-react"
+import { Loader2, Search, ChevronDown } from "lucide-react"
 import { toast } from "sonner"
 import {
   formatCoins,
 } from "@/lib/coins"
 import { useCoinBalance } from "@/hooks/use-coin-balance"
+import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Button } from "@/components/ui/button"
 
 export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (order: any) => void }) {
   const searchParams = useSearchParams()
@@ -34,6 +37,28 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
   const [cost, setCost] = useState(0)
   const [usdToPhpRate, setUsdToPhpRate] = useState<number>(50) // Default rate
   const [defaultMarkup, setDefaultMarkup] = useState<number>(1.5) // Default markup (50%)
+  const [serviceSearchTerm, setServiceSearchTerm] = useState<string>("")
+  const serviceTriggerRef = useRef<HTMLButtonElement>(null)
+  const [popoverOpen, setPopoverOpen] = useState<boolean>(false)
+  const [popoverWidth, setPopoverWidth] = useState<number>(300)
+  const [categorySearchTerm, setCategorySearchTerm] = useState<string>("")
+  const categoryTriggerRef = useRef<HTMLButtonElement>(null)
+  const [categoryPopoverOpen, setCategoryPopoverOpen] = useState<boolean>(false)
+  const [categoryPopoverWidth, setCategoryPopoverWidth] = useState<number>(300)
+
+  // Update popover width when it opens
+  useEffect(() => {
+    if (popoverOpen && serviceTriggerRef.current) {
+      setPopoverWidth(serviceTriggerRef.current.offsetWidth)
+    }
+  }, [popoverOpen])
+
+  // Update category popover width when it opens
+  useEffect(() => {
+    if (categoryPopoverOpen && categoryTriggerRef.current) {
+      setCategoryPopoverWidth(categoryTriggerRef.current.offsetWidth)
+    }
+  }, [categoryPopoverOpen])
 
   useEffect(() => {
     async function fetchServices() {
@@ -102,18 +127,19 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
         return
       }
       
-      const quantity = Number(formData.quantity)
-      const ratePerUnit = Number(selectedService.rate) // Provider rate in USD per unit
+        const quantity = Number(formData.quantity)
+      const ratePer1000 = Number(selectedService.rate) // Provider rate in USD per 1000 (already per 1000)
       
-      // Step 1: Convert to PHP: USD per unit × USD to PHP rate = PHP per unit
-      const ratePerUnitInPhp = ratePerUnit * usdToPhpRate
+      // Step 1: Convert to PHP: USD per 1000 × USD to PHP rate = PHP per 1000
+      const ratePer1000InPhp = ratePer1000 * usdToPhpRate
       
-      // Step 2: Apply markup: PHP per unit × markup = final price per unit in PHP (with markup)
-      const finalRatePerUnitInPhp = ratePerUnitInPhp * defaultMarkup
+      // Step 2: Apply markup: PHP per 1000 × markup = final price per 1000 in PHP (with markup)
+      const finalRatePer1000InPhp = ratePer1000InPhp * defaultMarkup
       
-      // Step 3: Calculate total charge: (price per unit in PHP with markup) × quantity
+      // Step 3: Calculate total charge: (price per 1000 in PHP with markup / 1000) × quantity
       // This is the actual price the customer pays
-      const cost = finalRatePerUnitInPhp * quantity
+      const pricePerUnit = finalRatePer1000InPhp / 1000
+      const cost = pricePerUnit * quantity
       setCost(cost)
     }
     
@@ -314,13 +340,44 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
     }
   }
 
-  // Get unique categories
-  const categories = Array.from(new Set(services.map(s => s.category)))
+  // Get unique categories (memoized)
+  const categories = useMemo(() => {
+    return Array.from(new Set(services.map(s => s.category)))
+  }, [services])
   
-  // Filter services by selected category
-  const filteredServices = formData.category
-    ? services.filter(s => s.category === formData.category)
-    : services
+  // Filter categories by search term (memoized)
+  const filteredCategories = useMemo(() => {
+    if (!categorySearchTerm.trim()) return categories
+    const searchLower = categorySearchTerm.toLowerCase()
+    return categories.filter((category) => 
+      category.toLowerCase().includes(searchLower)
+    )
+  }, [categories, categorySearchTerm])
+  
+  // Filter services by selected category and search term (memoized)
+  const filteredServices = useMemo(() => {
+    return services.filter((service) => {
+      // Filter by category if selected
+      if (formData.category && service.category !== formData.category) {
+        return false
+      }
+      
+      // Filter by search term (search in name, type, category, or service ID)
+      if (serviceSearchTerm) {
+        const searchLower = serviceSearchTerm.toLowerCase()
+        const matchesName = service.name?.toLowerCase().includes(searchLower)
+        const matchesType = service.type?.toLowerCase().includes(searchLower)
+        const matchesCategory = service.category?.toLowerCase().includes(searchLower)
+        const matchesId = String(service.service).includes(searchLower)
+        
+        if (!matchesName && !matchesType && !matchesCategory && !matchesId) {
+          return false
+        }
+      }
+      
+      return true
+    })
+  }, [services, formData.category, serviceSearchTerm])
 
   if (loading) {
     return (
@@ -341,53 +398,193 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
             <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-2">Select Category</label>
-            <select
-              value={formData.category}
-              onChange={(e) => {
-                setFormData({ ...formData, category: e.target.value, service: "" })
+            <Popover open={categoryPopoverOpen} onOpenChange={setCategoryPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  ref={categoryTriggerRef}
+                  variant="outline"
+                  role="combobox"
+                  className="w-full justify-between px-3 sm:px-4 py-2 sm:py-3 bg-gray-50 border border-gray-200 rounded-lg text-slate-900 text-sm font-normal hover:bg-gray-100"
+                >
+                  <span className="truncate">
+                    {formData.category || "Choose..."}
+                  </span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent 
+                className="p-0 w-full" 
+                align="start" 
+                sideOffset={4}
+                style={{ width: `${categoryPopoverWidth}px`, padding: 0 }}
+              >
+                <div className="flex flex-col">
+                  {/* Search bar at the top of dropdown */}
+                  <div className="relative border-b border-gray-200 p-3 bg-white">
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                    <Input
+                      type="text"
+                      placeholder="Search categories..."
+                      value={categorySearchTerm}
+                      onChange={(e) => setCategorySearchTerm(e.target.value)}
+                      className="pl-9 pr-3 w-full text-sm h-9 border border-gray-200 rounded-md focus-visible:ring-2 focus-visible:ring-green-500"
+                      autoFocus
+                    />
+                  </div>
+                  {/* Categories list */}
+                  <div className="max-h-[300px] overflow-y-auto">
+                    {filteredCategories.length === 0 ? (
+                      <div className="px-4 py-8 text-center text-sm text-gray-500">
+                        No categories found
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFormData({ ...formData, category: "", service: "" })
+                            setSelectedService(null)
+                            setServiceSearchTerm("")
+                            setCategorySearchTerm("")
+                            setCategoryPopoverOpen(false)
+                          }}
+                          className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
+                            !formData.category ? "bg-green-50 text-green-700 font-medium" : "text-slate-900"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span>Choose...</span>
+                            {!formData.category && (
+                              <div className="ml-2 text-green-600">✓</div>
+                            )}
+                          </div>
+                        </button>
+                        {filteredCategories.map((category) => {
+                          const isSelected = formData.category === category
+                          return (
+                            <button
+                              key={category}
+                              type="button"
+                              onClick={() => {
+                                setFormData({ ...formData, category: category, service: "" })
                 setSelectedService(null)
-              }}
-              className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-slate-900 text-sm"
-            >
-              <option value="">Choose...</option>
-              {categories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
+                                setServiceSearchTerm("")
+                                setCategorySearchTerm("")
+                                setCategoryPopoverOpen(false)
+                              }}
+                              className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
+                                isSelected ? "bg-green-50 text-green-700 font-medium" : "text-slate-900"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <span>{category}</span>
+                                {isSelected && (
+                                  <div className="ml-2 text-green-600">✓</div>
+                                )}
+                              </div>
+                            </button>
+                          )
+                        })}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
           <div>
             <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-2">Select Service *</label>
-            <select
-              value={formData.service}
-              onChange={(e) => setFormData({ ...formData, service: e.target.value })}
+            <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  ref={serviceTriggerRef}
+                  variant="outline"
+                  role="combobox"
               disabled={!formData.category}
-              className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-slate-900 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <option value="">Choose...</option>
-              {filteredServices.map((service) => {
-                const ratePerUnit = Number(service.rate) // Original provider rate in USD per unit
-                const ratePer1000InUsd = ratePerUnit * 1000 // Convert to per 1000 units in USD
-                const ratePer1000InPhp = ratePer1000InUsd * usdToPhpRate // Convert USD to PHP
-                const ratePer1000WithMarkup = ratePer1000InPhp * defaultMarkup // Apply markup
-                const priceDisplay = `₱${ratePer1000WithMarkup.toFixed(2)}/1000`
+                  className="w-full justify-between px-3 sm:px-4 py-2 sm:py-3 bg-gray-50 border border-gray-200 rounded-lg text-slate-900 text-sm font-normal disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100"
+                >
+                  <span className="truncate">
+                    {selectedService 
+                      ? `${selectedService.name} (${selectedService.type})`
+                      : "Choose a service..."}
+                  </span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent 
+                className="p-0 w-full" 
+                align="start" 
+                sideOffset={4}
+                style={{ width: `${popoverWidth}px`, padding: 0 }}
+              >
+                <div className="flex flex-col">
+                  {/* Search bar at the top of dropdown */}
+                  <div className="relative border-b border-gray-200 p-3 bg-white">
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none" size={16} />
+                    <Input
+                      type="text"
+                      placeholder="Search services..."
+                      value={serviceSearchTerm}
+                      onChange={(e) => setServiceSearchTerm(e.target.value)}
+                      className="pl-9 pr-3 w-full text-sm h-9 border border-gray-200 rounded-md focus-visible:ring-2 focus-visible:ring-green-500"
+                      autoFocus
+                    />
+                  </div>
+                  {/* Services list */}
+                  <div className="max-h-[300px] overflow-y-auto">
+                    {filteredServices.length === 0 ? (
+                      <div className="px-4 py-8 text-center text-sm text-gray-500">
+                        No services found
+                      </div>
+                    ) : (
+                      filteredServices.map((service) => {
+                        // Memoize price calculation
+                        const ratePer1000 = Number(service.rate) // Provider rate in USD per 1000 (already per 1000)
+                        const ratePer1000InPhp = ratePer1000 * usdToPhpRate // Convert USD to PHP
+                        const ratePer1000WithMarkup = ratePer1000InPhp * defaultMarkup // Apply markup
+                        const priceDisplay = `₱${ratePer1000WithMarkup.toFixed(2)}/1000`
+                        const isSelected = formData.service === String(service.service)
                 return (
-                  <option key={service.service} value={service.service}>
-                    {service.name} ({service.type}) - {priceDisplay} [Min: {service.min}+]
-                  </option>
-                )
-              })}
-            </select>
+                          <button
+                            key={service.service}
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, service: String(service.service) })
+                              setServiceSearchTerm("") // Clear search after selection
+                              setPopoverOpen(false) // Close popover after selection
+                            }}
+                            className={`w-full text-left px-4 py-2 text-sm hover:bg-gray-100 transition-colors ${
+                              isSelected ? "bg-green-50 text-green-700 font-medium" : "text-slate-900"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium truncate">{service.name}</div>
+                                <div className="text-xs text-gray-500 truncate">
+                                  {service.type} - {priceDisplay} [Min: {service.min}+]
+                                </div>
+                              </div>
+                              {isSelected && (
+                                <div className="ml-2 text-green-600">✓</div>
+                              )}
+                            </div>
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
             {selectedService && (
               <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
                 <div className="flex items-center justify-between">
                   <div className="text-xs text-gray-600">
                     <span className="font-medium">Min:</span> {selectedService.min}+ | <span className="font-medium">Max:</span> {selectedService.max}
                   </div>
-                  <div className="text-sm font-bold text-green-700">
-                    ₱{(((Number(selectedService.rate) * 1000) * usdToPhpRate) * defaultMarkup).toFixed(2)}/1000
-                  </div>
+                    <div className="text-sm font-bold text-green-700">
+                    ₱{((Number(selectedService.rate) * usdToPhpRate) * defaultMarkup).toFixed(2)}/1000
+                    </div>
                 </div>
                 {selectedService.refill && (
                   <span className="inline-block mt-1 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">

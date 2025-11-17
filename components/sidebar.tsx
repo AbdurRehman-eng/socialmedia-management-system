@@ -10,7 +10,6 @@ import {
   Plus,
   ShoppingBag,
   DollarSign,
-  List,
   BarChart3,
   Settings,
   Menu,
@@ -37,7 +36,6 @@ export default function Sidebar() {
     { id: "new-order", label: "New Order", icon: Plus, href: "/new-order" },
     { id: "my-orders", label: "My Orders", icon: ShoppingBag, href: "/my-orders" },
     { id: "balance", label: "Balance", icon: DollarSign, href: "/balance" },
-    { id: "service-list", label: "Service List", icon: List, href: "/service-list" },
     { id: "reports", label: "Reports", icon: BarChart3, href: "/reports" },
     { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
     { id: "divider", label: "divider", icon: null, href: "" }, // Divider
