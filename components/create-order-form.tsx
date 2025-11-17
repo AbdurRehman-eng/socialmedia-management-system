@@ -8,8 +8,6 @@ import { useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import {
-  calculateOrderCost,
-  calculateCoinPrice,
   formatCoins,
 } from "@/lib/coins"
 import { useCoinBalance } from "@/hooks/use-coin-balance"
@@ -34,36 +32,38 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
   const [selectedService, setSelectedService] = useState<Service | null>(null)
   const { balance: coinBalance, refresh: refreshBalance } = useCoinBalance()
   const [cost, setCost] = useState(0)
-  const [costLoading, setCostLoading] = useState(false)
-  const [servicePrices, setServicePrices] = useState<Record<number, number>>({})
+  const [usdToPhpRate, setUsdToPhpRate] = useState<number>(50) // Default rate
+  const [defaultMarkup, setDefaultMarkup] = useState<number>(1.5) // Default markup (50%)
 
   useEffect(() => {
     async function fetchServices() {
       try {
         setLoading(true)
+        
+        // Fetch USD to PHP rate from admin settings
+        try {
+          const usdToPhpResponse = await fetch('/api/admin/settings/usd-to-php-rate')
+          if (usdToPhpResponse.ok) {
+            const usdToPhpData = await usdToPhpResponse.json()
+            setUsdToPhpRate(usdToPhpData.rate || 50)
+          }
+        } catch (err) {
+          console.warn("Failed to fetch USD to PHP rate, using default 50:", err)
+        }
+        
+        // Fetch default markup from admin settings
+        try {
+          const markupResponse = await fetch('/api/admin/settings/default-markup')
+          if (markupResponse.ok) {
+            const markupData = await markupResponse.json()
+            setDefaultMarkup(markupData.markup || 1.5)
+          }
+        } catch (err) {
+          console.warn("Failed to fetch default markup, using default 1.5:", err)
+        }
+        
         const data = await smmApi.getServices()
         setServices(data)
-        
-        // Calculate prices for all services efficiently
-        // Fetch USD to PHP rate and default markup
-        const usdToPhpResponse = await fetch('/api/admin/settings/usd-to-php-rate')
-        const usdToPhpData = await usdToPhpResponse.json()
-        const usdToPhpRate = usdToPhpData.rate || 50
-        const defaultMarkup = 1.5 // 50% markup
-        
-        const prices: Record<number, number> = {}
-        
-        data.forEach((service) => {
-          const providerRateInUsdPerUnit = Number(service.rate)
-          // Step 1: Convert to per 1000 units (provider gives per unit)
-          const providerRateInUsdPer1000 = providerRateInUsdPerUnit * 1000
-          // Step 2: Convert USD to PHP
-          const providerRateInPhpPer1000 = providerRateInUsdPer1000 * usdToPhpRate
-          // Step 3: Apply markup (prices will be recalculated accurately on order submit)
-          prices[service.service] = providerRateInPhpPer1000 * defaultMarkup
-        })
-        
-        setServicePrices(prices)
         
         // If service ID is preselected, find and set it
         if (preselectedServiceId) {
@@ -96,26 +96,28 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
 
   // Calculate cost when service or quantity changes
   useEffect(() => {
-    async function calculateCost() {
+    function calculateCost() {
       if (!selectedService || !formData.quantity) {
         setCost(0)
         return
       }
-      setCostLoading(true)
-      try {
-        const quantity = Number(formData.quantity)
-        const providerRate = Number(selectedService.rate)
-        const calculatedCost = await calculateOrderCost(providerRate, quantity, selectedService.service)
-        setCost(calculatedCost)
-      } catch (error) {
-        console.error("Error calculating cost:", error)
-        setCost(0)
-      } finally {
-        setCostLoading(false)
-      }
+      
+      const quantity = Number(formData.quantity)
+      const ratePerUnit = Number(selectedService.rate) // Provider rate in USD per unit
+      
+      // Step 1: Convert to PHP: USD per unit × USD to PHP rate = PHP per unit
+      const ratePerUnitInPhp = ratePerUnit * usdToPhpRate
+      
+      // Step 2: Apply markup: PHP per unit × markup = final price per unit
+      const finalRatePerUnitInPhp = ratePerUnitInPhp * defaultMarkup
+      
+      // Step 3: Calculate cost: final PHP per unit × quantity
+      const cost = finalRatePerUnitInPhp * quantity
+      setCost(cost)
     }
+    
     calculateCost()
-  }, [selectedService, formData.quantity])
+  }, [selectedService, formData.quantity, usdToPhpRate, defaultMarkup])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -363,13 +365,14 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
             >
               <option value="">Choose...</option>
               {filteredServices.map((service) => {
-                const pricePerThousand = servicePrices[service.service]
-                const priceDisplay = pricePerThousand 
-                  ? formatCoins(pricePerThousand)
-                  : '...'
+                const ratePerUnit = Number(service.rate) // Original provider rate in USD per unit
+                const ratePer1000InUsd = ratePerUnit * 1000 // Convert to per 1000 units in USD
+                const ratePer1000InPhp = ratePer1000InUsd * usdToPhpRate // Convert USD to PHP
+                const ratePer1000WithMarkup = ratePer1000InPhp * defaultMarkup // Apply markup
+                const priceDisplay = `₱${ratePer1000WithMarkup.toFixed(2)}/1000`
                 return (
                   <option key={service.service} value={service.service}>
-                    {service.name} ({service.type}) - {priceDisplay}/1000 [Min: {service.min}+]
+                    {service.name} ({service.type}) - {priceDisplay} [Min: {service.min}+]
                   </option>
                 )
               })}
@@ -380,11 +383,9 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
                   <div className="text-xs text-gray-600">
                     <span className="font-medium">Min:</span> {selectedService.min}+ | <span className="font-medium">Max:</span> {selectedService.max}
                   </div>
-                  {servicePrices[selectedService.service] && (
-                    <div className="text-sm font-bold text-green-700">
-                      {formatCoins(servicePrices[selectedService.service])}/1000
-                    </div>
-                  )}
+                  <div className="text-sm font-bold text-green-700">
+                    ₱{(((Number(selectedService.rate) * 1000) * usdToPhpRate) * defaultMarkup).toFixed(2)}/1000
+                  </div>
                 </div>
                 {selectedService.refill && (
                   <span className="inline-block mt-1 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
@@ -474,13 +475,9 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
           <div>
             <p className="text-slate-900 font-semibold text-sm sm:text-base">
               Cost: <span className="text-green-600 font-bold">
-                {costLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin inline" />
-                ) : (
-                  formatCoins(cost)
-                )}
+                {formatCoins(cost)}
               </span>
-              {selectedService && formData.quantity && !costLoading && (
+              {selectedService && formData.quantity && cost > 0 && (
                 <span className="text-xs text-gray-500 ml-2">
                   ({formData.quantity} × {formatCoins(cost / Number(formData.quantity))})
                 </span>
