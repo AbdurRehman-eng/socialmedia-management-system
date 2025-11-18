@@ -30,6 +30,7 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
     keywords: "",
     runs: "",
     interval: "",
+    comments: "",
   })
 
   const [selectedService, setSelectedService] = useState<Service | null>(null)
@@ -45,6 +46,14 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
   const categoryTriggerRef = useRef<HTMLButtonElement>(null)
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState<boolean>(false)
   const [categoryPopoverWidth, setCategoryPopoverWidth] = useState<number>(300)
+
+  const getCommentLines = (comments: string) =>
+    comments
+      .split(/\r?\n/)
+      .map((comment) => comment.trim())
+      .filter((comment) => comment.length > 0)
+
+  const sanitizeComments = (comments: string) => getCommentLines(comments).join("\r\n")
 
   // Update popover width when it opens
   useEffect(() => {
@@ -109,49 +118,123 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
     fetchServices()
   }, [preselectedServiceId])
 
+  // Helper function to check if a service is a custom comments service
+  const checkIsCustomCommentsService = (service: Service | null): boolean => {
+    if (!service) return false
+    const nameLower = service.name?.toLowerCase() || ""
+    const typeLower = service.type?.toLowerCase() || ""
+    const categoryLower = service.category?.toLowerCase() || ""
+    
+    // Check if service name, type, or category contains keywords indicating custom comments
+    return (
+      nameLower.includes("custom comment") ||
+      nameLower.includes("customcomment") ||
+      typeLower.includes("custom comment") ||
+      typeLower.includes("customcomment") ||
+      categoryLower.includes("custom comment") ||
+      categoryLower.includes("customcomment") ||
+      (nameLower.includes("comment") && (nameLower.includes("custom") || nameLower.includes("personal")))
+    )
+  }
+
+  // Check if selected service is a custom comments service
+  const isCustomCommentsService = useMemo(() => {
+    return checkIsCustomCommentsService(selectedService)
+  }, [selectedService])
+
   // Update selected service when service ID changes
   useEffect(() => {
     if (formData.service) {
       const service = services.find(s => s.service === Number(formData.service))
+      const prevIsCustomComments = checkIsCustomCommentsService(selectedService)
       setSelectedService(service || null)
+      
+      // Clear comments if switching from custom comments service to regular service
+      // Clear quantity if switching from regular service to custom comments service
+      if (service) {
+        const newIsCustomComments = checkIsCustomCommentsService(service)
+        
+        if (prevIsCustomComments && !newIsCustomComments) {
+          // Switching from custom comments to regular - clear comments
+          setFormData(prev => ({ ...prev, comments: "" }))
+        } else if (!prevIsCustomComments && newIsCustomComments) {
+          // Switching from regular to custom comments - clear quantity
+          setFormData(prev => ({ ...prev, quantity: "" }))
+        }
+      }
     } else {
       setSelectedService(null)
     }
-  }, [formData.service, services])
+  }, [formData.service, services, selectedService])
 
-  // Calculate cost when service or quantity changes
+  // Calculate cost when service quantity/comments change
   useEffect(() => {
     function calculateCost() {
-      if (!selectedService || !formData.quantity) {
+      if (!selectedService) {
         setCost(0)
         return
       }
-      
-        const quantity = Number(formData.quantity)
+
       const ratePer1000 = Number(selectedService.rate) // Provider rate in USD per 1000 (already per 1000)
-      
-      // Step 1: Convert to PHP: USD per 1000 × USD to PHP rate = PHP per 1000
       const ratePer1000InPhp = ratePer1000 * usdToPhpRate
-      
-      // Step 2: Apply markup: PHP per 1000 × markup = final price per 1000 in PHP (with markup)
       const finalRatePer1000InPhp = ratePer1000InPhp * defaultMarkup
-      
-      // Step 3: Calculate total charge: (price per 1000 in PHP with markup / 1000) × quantity
-      // This is the actual price the customer pays
       const pricePerUnit = finalRatePer1000InPhp / 1000
-      const cost = pricePerUnit * quantity
-      setCost(cost)
+
+      if (isCustomCommentsService) {
+        const commentCount = getCommentLines(formData.comments).length
+        if (!commentCount) {
+          setCost(0)
+          return
+        }
+        setCost(pricePerUnit * commentCount)
+        return
+      }
+
+      if (!formData.quantity) {
+        setCost(0)
+        return
+      }
+
+      const quantity = Number(formData.quantity)
+      if (isNaN(quantity)) {
+        setCost(0)
+        return
+      }
+
+      setCost(pricePerUnit * quantity)
     }
     
     calculateCost()
-  }, [selectedService, formData.quantity, usdToPhpRate, defaultMarkup])
+  }, [selectedService, isCustomCommentsService, formData.quantity, formData.comments, usdToPhpRate, defaultMarkup])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!formData.service || !formData.link || !formData.quantity) {
+    if (!formData.service || !formData.link) {
       toast.error("Please fill in all required fields")
       return
+    }
+    
+    // For custom comments services, comments are required
+    let sanitizedComments = ""
+    let customCommentCount = 0
+    let regularQuantity = 0
+    if (isCustomCommentsService) {
+      const commentLines = getCommentLines(formData.comments)
+      customCommentCount = commentLines.length
+
+      if (!customCommentCount) {
+        toast.error("Please enter comments for custom comments services")
+        return
+      }
+
+      sanitizedComments = sanitizeComments(formData.comments)
+    } else {
+      // For regular services, quantity is required
+      if (!formData.quantity) {
+        toast.error("Please enter quantity")
+        return
+      }
     }
 
     if (!selectedService) {
@@ -159,17 +242,19 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
       return
     }
 
-    const quantity = Number(formData.quantity)
-    console.log('[CreateOrderForm] Quantity parsed:', quantity, 'Type:', typeof quantity)
-    console.log('[CreateOrderForm] Service min:', selectedService.min, 'Type:', typeof selectedService.min)
-    console.log('[CreateOrderForm] Service max:', selectedService.max, 'Type:', typeof selectedService.max)
-    
-    if (isNaN(quantity) || quantity < Number(selectedService.min) || quantity > Number(selectedService.max)) {
-      toast.error(`Quantity must be between ${selectedService.min} and ${selectedService.max}`)
-      return
+    // For regular services, validate quantity
+    if (!isCustomCommentsService) {
+      regularQuantity = Number(formData.quantity)
+      console.log('[CreateOrderForm] Quantity parsed:', regularQuantity, 'Type:', typeof regularQuantity)
+      console.log('[CreateOrderForm] Service min:', selectedService.min, 'Type:', typeof selectedService.min)
+      console.log('[CreateOrderForm] Service max:', selectedService.max, 'Type:', typeof selectedService.max)
+      
+      if (isNaN(regularQuantity) || regularQuantity < Number(selectedService.min) || regularQuantity > Number(selectedService.max)) {
+        toast.error(`Quantity must be between ${selectedService.min} and ${selectedService.max}`)
+        return
+      }
     }
 
-    // Check coin balance
     if (coinBalance < cost) {
       toast.error(`Insufficient coins. You need ${formatCoins(cost)} but only have ${formatCoins(coinBalance)}`)
       return
@@ -178,7 +263,6 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
     try {
       setSubmitting(true)
       
-      // Deduct coins via API
       const deductResponse = await fetch('/api/balance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -193,10 +277,24 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
 
       refreshBalance() // Refresh balance display
       
+      let response
+      if (isCustomCommentsService) {
+        // Custom comments order
+        const orderParams: any = {
+          service: Number(formData.service),
+          link: formData.link,
+          comments: sanitizedComments, // Comments separated by \r\n
+        }
+        
+        console.log('[CreateOrderForm] Submitting custom comments order to provider with params:', orderParams)
+        response = await smmApi.addCustomCommentsOrder(orderParams)
+      } else {
+        // Regular order
+        const quantity = regularQuantity
       const orderParams: any = {
         service: Number(formData.service),
         link: formData.link,
-        quantity: Number(quantity), // Ensure it's a number
+          quantity: quantity, // Ensure it's a number
       }
       
       console.log('[CreateOrderForm] Order params quantity:', orderParams.quantity, 'Type:', typeof orderParams.quantity)
@@ -217,7 +315,8 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
         minType: typeof selectedService.min,
         maxType: typeof selectedService.max
       })
-      const response = await smmApi.addOrder(orderParams)
+        response = await smmApi.addOrder(orderParams)
+      }
       console.log('[CreateOrderForm] Provider response:', response)
       
       // Validate provider response
@@ -227,14 +326,14 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
       }
       
       // Save order to Supabase via API
-      // costCoins is the total charge in PHP: (price per unit in PHP with markup) × quantity
+      const quantity = isCustomCommentsService ? customCommentCount : regularQuantity
       const orderData = {
         orderId: response.order,
         serviceId: selectedService.service,
         serviceName: selectedService.name,
         link: formData.link,
         quantity: quantity,
-        costCoins: cost, // Total charge in PHP (with markup, multiplied by quantity)
+        costCoins: cost,
       }
       
       console.log('[CreateOrderForm] Saving order to database:', orderData)
@@ -274,6 +373,7 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
         keywords: "",
         runs: "",
         interval: "",
+        comments: "",
       })
       setSelectedService(null)
     } catch (err: any) {
@@ -609,7 +709,8 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
           />
         </div>
 
-        {/* Quantity */}
+        {/* Quantity - only show for non-custom-comments services */}
+        {!isCustomCommentsService && (
         <div>
           <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-2">
             Quantity * {selectedService && `(Min: ${selectedService.min}+, Max: ${selectedService.max})`}
@@ -630,8 +731,31 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
             </p>
           )}
         </div>
+        )}
 
-        {/* Optional: Runs and Interval */}
+        {/* Custom Comments - only show for custom comments services */}
+        {isCustomCommentsService && (
+          <div>
+            <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-2">
+              Custom Comments * 
+              <span className="text-gray-500 text-xs ml-2">(One comment per line)</span>
+            </label>
+            <textarea
+              value={formData.comments}
+              onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
+              placeholder="Enter comments, one per line&#10;Example:&#10;Comment 1&#10;Comment 2&#10;Comment 3"
+              required
+              rows={6}
+              className="w-full px-3 sm:px-4 py-2 sm:py-3 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-slate-900 placeholder-gray-400 resize-none text-sm"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Enter your custom comments, one per line. Each line will be treated as a separate comment.
+            </p>
+          </div>
+        )}
+
+        {/* Optional: Runs and Interval (only for regular orders) */}
+        {!isCustomCommentsService && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div>
             <label className="block text-xs sm:text-sm font-medium text-slate-900 mb-2">Runs (Optional)</label>
@@ -656,6 +780,7 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
             />
           </div>
         </div>
+        )}
 
         {/* Keywords */}
         <div>
@@ -688,7 +813,7 @@ export default function CreateOrderForm({ onOrderSubmit }: { onOrderSubmit?: (or
           </div>
           <button
             type="submit"
-            disabled={submitting || !formData.service || !formData.link || !formData.quantity}
+            disabled={submitting || !formData.service || !formData.link || (!isCustomCommentsService && !formData.quantity) || (isCustomCommentsService && !formData.comments.trim())}
             className="w-full sm:w-auto bg-green-500 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold px-6 sm:px-8 py-2 sm:py-3 rounded-lg transition-all transform hover:scale-105 text-sm sm:text-base flex items-center gap-2 justify-center"
           >
             {submitting ? (

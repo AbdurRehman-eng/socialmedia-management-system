@@ -133,6 +133,21 @@ class SMMApiClient {
     return await this.makeRequest(requestParams)
   }
 
+  async addCustomCommentsOrder(params: {
+    service: number
+    link: string
+    comments: string
+  }): Promise<OrderResponse> {
+    const requestParams: Record<string, string | number> = {
+      action: "add",
+      service: params.service,
+      link: params.link,
+      comments: params.comments, // Comments list separated by \r\n or \n
+    }
+
+    return await this.makeRequest(requestParams)
+  }
+
   async getOrderStatus(orderId: number): Promise<OrderStatus> {
     return await this.makeRequest({ action: "status", order: orderId })
   }
