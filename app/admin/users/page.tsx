@@ -30,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Plus, Trash2, Coins } from "lucide-react"
+import { Loader2, Plus, Trash2, Coins, Minus } from "lucide-react"
 import { toast } from "sonner"
 import PageLayout from "@/components/page-layout"
 
@@ -49,8 +49,10 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [allocateDialogOpen, setAllocateDialogOpen] = useState(false)
+  const [deallocateDialogOpen, setDeallocateDialogOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [allocateAmount, setAllocateAmount] = useState<string>("")
+  const [deallocateAmount, setDeallocateAmount] = useState<string>("")
   const [adminBalance, setAdminBalance] = useState<number>(0)
   const [newUser, setNewUser] = useState({
     email: "",
@@ -192,6 +194,12 @@ export default function AdminUsersPage() {
     setAllocateDialogOpen(true)
   }
 
+  const handleOpenDeallocateDialog = (user: User) => {
+    setSelectedUser(user)
+    setDeallocateAmount("")
+    setDeallocateDialogOpen(true)
+  }
+
   const handleAllocateCoins = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -200,11 +208,6 @@ export default function AdminUsersPage() {
     const amount = parseFloat(allocateAmount)
     if (isNaN(amount) || amount <= 0) {
       toast.error("Please enter a valid amount")
-      return
-    }
-
-    if (amount > adminBalance) {
-      toast.error(`Insufficient balance. You have ₱${adminBalance.toFixed(2)} available`)
       return
     }
 
@@ -234,6 +237,51 @@ export default function AdminUsersPage() {
     } catch (error) {
       toast.error("An error occurred while allocating coins")
       console.error("Allocate coins error:", error)
+    }
+  }
+
+  const handleDeallocateCoins = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!selectedUser) return
+
+    const amount = parseFloat(deallocateAmount)
+    if (isNaN(amount) || amount <= 0) {
+      toast.error("Please enter a valid amount")
+      return
+    }
+
+    if (amount > selectedUser.balance) {
+      toast.error(`Amount exceeds user balance. User has ₱${selectedUser.balance.toFixed(2)}`)
+      return
+    }
+
+    try {
+      const response = await fetch("/api/admin/deallocate-coins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: selectedUser.id,
+          amount: amount,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        toast.error(data.error || "Failed to deallocate coins")
+        return
+      }
+
+      toast.success(`Successfully deallocated ₱${amount.toFixed(2)} from ${selectedUser.username}`)
+      setDeallocateDialogOpen(false)
+      setSelectedUser(null)
+      setDeallocateAmount("")
+      loadUsers()
+      loadAdminBalance()
+    } catch (error) {
+      toast.error("An error occurred while deallocating coins")
+      console.error("Deallocate coins error:", error)
     }
   }
 
@@ -387,6 +435,16 @@ export default function AdminUsersPage() {
                           </Button>
                           <Button
                             size="sm"
+                            variant="default"
+                            className="bg-orange-600 hover:bg-orange-700"
+                            onClick={() => handleOpenDeallocateDialog(user)}
+                            disabled={user.balance <= 0}
+                          >
+                            <Minus className="w-4 h-4 mr-1" />
+                            Deallocate
+                          </Button>
+                          <Button
+                            size="sm"
                             variant="outline"
                             onClick={() => handleToggleUserStatus(user.id, user.isActive)}
                           >
@@ -415,7 +473,7 @@ export default function AdminUsersPage() {
             <DialogHeader>
               <DialogTitle>Allocate Coins to {selectedUser?.username}</DialogTitle>
               <DialogDescription>
-                Transfer coins from your balance to this user. This amount will be deducted from your balance.
+                Allocate coins to this user. You can allocate any amount without restrictions.
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleAllocateCoins} className="space-y-4">
@@ -428,29 +486,19 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Your Available Balance</Label>
-                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-                  <span className="font-bold text-green-600">
-                    ₱{adminBalance.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="amount">Amount to Allocate (₱)</Label>
                 <Input
                   id="amount"
                   type="number"
                   step="0.01"
                   min="0.01"
-                  max={adminBalance}
                   placeholder="Enter amount"
                   value={allocateAmount}
                   onChange={(e) => setAllocateAmount(e.target.value)}
                   required
                 />
                 <p className="text-xs text-gray-500">
-                  After transfer: You'll have ₱{(adminBalance - (parseFloat(allocateAmount) || 0)).toFixed(2)} | 
-                  User will have ₱{((selectedUser?.balance || 0) + (parseFloat(allocateAmount) || 0)).toFixed(2)}
+                  User will have ₱{((selectedUser?.balance || 0) + (parseFloat(allocateAmount) || 0)).toFixed(2)} after allocation
                 </p>
               </div>
               <DialogFooter>
@@ -464,10 +512,66 @@ export default function AdminUsersPage() {
                 <Button 
                   type="submit" 
                   className="bg-green-600 hover:bg-green-700"
-                  disabled={!allocateAmount || parseFloat(allocateAmount) <= 0 || parseFloat(allocateAmount) > adminBalance}
+                  disabled={!allocateAmount || parseFloat(allocateAmount) <= 0}
                 >
                   <Coins className="w-4 h-4 mr-2" />
                   Allocate Coins
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Deallocate Coins Dialog */}
+        <Dialog open={deallocateDialogOpen} onOpenChange={setDeallocateDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Deallocate Coins from {selectedUser?.username}</DialogTitle>
+              <DialogDescription>
+                Remove coins from this user's balance. You can deallocate up to their current balance.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleDeallocateCoins} className="space-y-4">
+              <div className="space-y-2">
+                <Label>User Current Balance</Label>
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  <span className="font-bold text-green-600">
+                    ₱{selectedUser?.balance.toFixed(2) || "0.00"}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="deallocateAmount">Amount to Deallocate (₱)</Label>
+                <Input
+                  id="deallocateAmount"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={selectedUser?.balance || 0}
+                  placeholder="Enter amount"
+                  value={deallocateAmount}
+                  onChange={(e) => setDeallocateAmount(e.target.value)}
+                  required
+                />
+                <p className="text-xs text-gray-500">
+                  User will have ₱{Math.max(0, (selectedUser?.balance || 0) - (parseFloat(deallocateAmount) || 0)).toFixed(2)} after deallocation
+                </p>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDeallocateDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  className="bg-orange-600 hover:bg-orange-700"
+                  disabled={!deallocateAmount || parseFloat(deallocateAmount) <= 0 || parseFloat(deallocateAmount) > (selectedUser?.balance || 0)}
+                >
+                  <Minus className="w-4 h-4 mr-2" />
+                  Deallocate Coins
                 </Button>
               </DialogFooter>
             </form>

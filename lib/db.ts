@@ -154,6 +154,72 @@ export async function transferCoins(fromUserId: string, toUserId: string, amount
   return true
 }
 
+/**
+ * Admin-only: Allocate coins to a user without deducting from admin balance
+ * This allows admin to allocate any amount regardless of their balance
+ * @param toUserId - The user receiving coins
+ * @param amount - The amount to allocate
+ * @returns The new balance of the user
+ */
+export async function allocateCoinsToUser(toUserId: string, amount: number): Promise<number> {
+  try {
+    if (!toUserId) {
+      throw new Error('User ID is required')
+    }
+    
+    if (typeof amount !== 'number' || amount <= 0 || !isFinite(amount)) {
+      throw new Error('Amount must be a positive number')
+    }
+
+    const receiverBalance = await getCoinBalance(toUserId)
+    const newBalance = receiverBalance + amount
+    
+    // Ensure the balance is a valid number
+    if (!isFinite(newBalance)) {
+      throw new Error('Invalid balance calculation')
+    }
+    
+    await setCoinBalance(newBalance, toUserId)
+    return newBalance
+  } catch (error) {
+    debugLog('Error allocating coins to user:', error)
+    throw error
+  }
+}
+
+/**
+ * Admin-only: Deallocate coins from a user without adding to admin balance
+ * This allows admin to remove any amount from a user's balance
+ * @param fromUserId - The user losing coins
+ * @param amount - The amount to deallocate
+ * @returns The new balance of the user
+ */
+export async function deallocateCoinsFromUser(fromUserId: string, amount: number): Promise<number> {
+  try {
+    if (!fromUserId) {
+      throw new Error('User ID is required')
+    }
+    
+    if (typeof amount !== 'number' || amount <= 0 || !isFinite(amount)) {
+      throw new Error('Amount must be a positive number')
+    }
+
+    const currentBalance = await getCoinBalance(fromUserId)
+    const newBalance = Math.max(0, currentBalance - amount) // Prevent negative balances
+    
+    // Ensure the balance is a valid number
+    if (!isFinite(newBalance)) {
+      throw new Error('Invalid balance calculation')
+    }
+    
+    await setCoinBalance(newBalance, fromUserId)
+    return newBalance
+  } catch (error) {
+    debugLog('Error deallocating coins from user:', error)
+    throw error
+  }
+}
+
 // ==================== SETTINGS ====================
 
 export async function getSetting(key: string, defaultValue: string): Promise<string> {
