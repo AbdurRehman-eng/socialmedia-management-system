@@ -147,7 +147,6 @@ export default function MyOrdersPage() {
                   updatedOrders[index] = {
                     ...updatedOrders[index],
                     status: status.status || updatedOrders[index].status,
-                    charge: status.charge,
                     start_count: status.start_count,
                     remains: status.remains,
                     currency: status.currency,
