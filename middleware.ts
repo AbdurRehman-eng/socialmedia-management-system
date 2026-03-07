@@ -8,9 +8,10 @@ export function middleware(request: NextRequest) {
   // Public routes that don't require authentication
   const publicRoutes = ['/login', '/admin/login']
   const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route))
+  const isHomePage = pathname === '/'
 
   // If user is not authenticated and trying to access protected route
-  if (!sessionCookie && !isPublicRoute) {
+  if (!sessionCookie && !isPublicRoute && !isHomePage) {
     // Check if it's an admin route
     if (pathname.startsWith('/admin')) {
       return NextResponse.redirect(new URL('/admin/login', request.url))
@@ -24,8 +25,8 @@ export function middleware(request: NextRequest) {
     try {
       const user = JSON.parse(sessionCookie.value)
       
-      // If trying to access login pages while authenticated, redirect to dashboard
-      if (isPublicRoute) {
+      // If trying to access login pages or home while authenticated, redirect to dashboard
+      if (isPublicRoute || isHomePage) {
         if (user.role === 'admin') {
           return NextResponse.redirect(new URL('/admin/users', request.url))
         }
